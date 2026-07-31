@@ -1,0 +1,116 @@
+# Gateway Configuration
+server:
+  listen_addr: ":8085"
+  read_timeout: 15s
+  write_timeout: 15s
+  drain_timeout: 30s
+
+admin:
+  listen_addr: ":9091"
+  enabled: true
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+  pool_size: 10
+
+auth:
+  mode: "api_key"
+  api_keys:
+    # key -> tier mapping
+    "free-key-001":       "free"
+    "free-key-002":       "free"
+    "pro-key-001":        "pro"
+    "pro-key-002":        "pro"
+    "enterprise-key-001": "enterprise"
+  jwt:
+    secret: "change-me-in-production"
+    tier_claim: "tier"
+    issuer: "rate-limiter-gateway"
+
+# Rate limit tiers (referenced by auth tier name)
+rate_limits:
+  free:
+    algorithm: "token_bucket"
+    rate: 10          # 10 tokens/sec refill
+    burst: 20         # max 20 tokens in bucket
+    window: 1m        # used only by sliding_window
+  pro:
+    algorithm: "token_bucket"
+    rate: 100
+    burst: 200
+    window: 1m
+  enterprise:
+    algorithm: "token_bucket"
+    rate: 1000
+    burst: 2000
+    window: 1m
+
+# Routing rules (first match wins)
+routes:
+  - path_prefix: "/api/v1/users"
+    pool: "users-pool"
+    strip_prefix: false
+    rate_limit_tier: ""    # uses auth-derived tier
+    algorithm: ""          # uses tier default
+
+  - path_prefix: "/api/v1/orders"
+    pool: "orders-pool"
+    strip_prefix: false
+    rate_limit_tier: ""
+    algorithm: "sliding_window"  # override: use precise limiting for orders
+
+  - path_prefix: "/api/v1/products"
+    pool: "products-pool"
+    strip_prefix: false
+    rate_limit_tier: ""
+    algorithm: ""
+
+# Upstream pools
+pools:
+  users-pool:
+    strategy: "round_robin"
+    upstreams:
+      - id: "users-1"
+        url: "http://localhost:9001"
+        weight: 1
+      - id: "users-2"
+        url: "http://localhost:9002"
+        weight: 1
+
+  orders-pool:
+    strategy: "least_conn"
+    upstreams:
+      - id: "orders-1"
+        url: "http://localhost:9001"
+        weight: 1
+      - id: "orders-2"
+        url: "http://localhost:9002"
+        weight: 1
+      - id: "orders-3"
+        url: "http://localhost:9003"
+        weight: 1
+
+  products-pool:
+    strategy: "power_of_two"
+    upstreams:
+      - id: "products-1"
+        url: "http://localhost:9001"
+        weight: 3
+      - id: "products-2"
+        url: "http://localhost:9002"
+        weight: 1
+
+# Circuit breaker settings (per upstream)
+breaker:
+  failure_threshold: 5    # consecutive failures to trip open
+  success_threshold: 3    # successes in half-open to close
+  open_timeout: 30s       # time in open state before half-open
+
+# Health checker settings
+health:
+  interval: 10s
+  timeout: 2s
+  path: "/health"
+  threshold: 3            # consecutive failures to mark unhealthy

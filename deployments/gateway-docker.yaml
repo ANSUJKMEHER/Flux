@@ -1,0 +1,106 @@
+# Gateway config for Docker Compose environment
+# (paths point to Docker service names instead of localhost)
+server:
+  listen_addr: ":8080"
+  read_timeout: 15s
+  write_timeout: 15s
+  drain_timeout: 30s
+
+admin:
+  listen_addr: ":9091"
+  enabled: true
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+  pool_size: 20
+
+auth:
+  mode: "api_key"
+  api_keys:
+    "free-key-001":       "free"
+    "free-key-002":       "free"
+    "pro-key-001":        "pro"
+    "pro-key-002":        "pro"
+    "enterprise-key-001": "enterprise"
+  jwt:
+    secret: "change-me-in-production"
+    tier_claim: "tier"
+    issuer: "rate-limiter-gateway"
+
+rate_limits:
+  free:
+    algorithm: "token_bucket"
+    rate: 10
+    burst: 20
+    window: 1m
+  pro:
+    algorithm: "token_bucket"
+    rate: 100
+    burst: 200
+    window: 1m
+  enterprise:
+    algorithm: "token_bucket"
+    rate: 1000
+    burst: 2000
+    window: 1m
+
+routes:
+  - path_prefix: "/api/v1/users"
+    pool: "users-pool"
+    strip_prefix: false
+
+  - path_prefix: "/api/v1/orders"
+    pool: "orders-pool"
+    strip_prefix: false
+    algorithm: "sliding_window"
+
+  - path_prefix: "/api/v1/products"
+    pool: "products-pool"
+    strip_prefix: false
+
+pools:
+  users-pool:
+    strategy: "round_robin"
+    upstreams:
+      - id: "users-1"
+        url: "http://upstream-a:9001"
+        weight: 1
+      - id: "users-2"
+        url: "http://upstream-b:9001"
+        weight: 1
+
+  orders-pool:
+    strategy: "least_conn"
+    upstreams:
+      - id: "orders-1"
+        url: "http://upstream-a:9001"
+        weight: 1
+      - id: "orders-2"
+        url: "http://upstream-b:9001"
+        weight: 1
+      - id: "orders-3"
+        url: "http://upstream-c:9001"
+        weight: 1
+
+  products-pool:
+    strategy: "power_of_two"
+    upstreams:
+      - id: "products-1"
+        url: "http://upstream-a:9001"
+        weight: 3
+      - id: "products-2"
+        url: "http://upstream-b:9001"
+        weight: 1
+
+breaker:
+  failure_threshold: 5
+  success_threshold: 3
+  open_timeout: 30s
+
+health:
+  interval: 10s
+  timeout: 2s
+  path: "/health"
+  threshold: 3

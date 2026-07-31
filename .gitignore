@@ -1,0 +1,19 @@
+# Binaries
+/gateway
+/mockservice
+
+# Node
+node_modules/
+dist/
+
+# OS Files
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Local data
+data/
+*.db
+*.log

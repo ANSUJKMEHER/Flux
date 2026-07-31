@@ -1,0 +1,122 @@
+version: "3.8"
+
+services:
+  # --- Redis ---
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # --- Mock Upstream Services ---
+  upstream-a:
+    build:
+      context: ..
+      dockerfile: Dockerfile.mockservice
+    environment:
+      MOCK_PORT: "9001"
+      MOCK_SERVICE_NAME: "service-A"
+      MOCK_LATENCY_MIN: "5"
+      MOCK_LATENCY_MAX: "25"
+      MOCK_ERROR_RATE: "0.0"
+    ports:
+      - "9001:9001"
+
+  upstream-b:
+    build:
+      context: ..
+      dockerfile: Dockerfile.mockservice
+    environment:
+      MOCK_PORT: "9001"
+      MOCK_SERVICE_NAME: "service-B"
+      MOCK_LATENCY_MIN: "10"
+      MOCK_LATENCY_MAX: "50"
+      MOCK_ERROR_RATE: "0.0"
+    ports:
+      - "9002:9001"
+
+  upstream-c:
+    build:
+      context: ..
+      dockerfile: Dockerfile.mockservice
+    environment:
+      MOCK_PORT: "9001"
+      MOCK_SERVICE_NAME: "service-C"
+      MOCK_LATENCY_MIN: "15"
+      MOCK_LATENCY_MAX: "75"
+      MOCK_ERROR_RATE: "0.0"
+    ports:
+      - "9003:9001"
+
+  # --- API Gateway ---
+  gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8080"
+      - "9091:9091"
+    volumes:
+      - ./gateway-docker.yaml:/configs/gateway.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      upstream-a:
+        condition: service_started
+      upstream-b:
+        condition: service_started
+      upstream-c:
+        condition: service_started
+
+  # --- Prometheus ---
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - gateway
+
+  # --- Grafana ---
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+  # --- Caddy Reverse Proxy (for deployment) ---
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+      - ACME_EMAIL=${ACME_EMAIL:-admin@localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - gateway
+      - upstream-a
+      - upstream-b
+      - upstream-c
+
+volumes:
+  caddy_data:
+  caddy_config:

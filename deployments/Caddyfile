@@ -1,0 +1,36 @@
+{
+	email ${ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	
+	# Dashboard UI and Admin APIs
+	handle_path /dashboard* {
+		reverse_proxy gateway:9091
+	}
+
+	handle /admin/* {
+		reverse_proxy gateway:9091
+	}
+
+	# Chaos API proxies (mapped to mock upstreams internally)
+	handle /chaos/mock-a {
+		rewrite * /chaos
+		reverse_proxy upstream-a:9001
+	}
+	
+	handle /chaos/mock-b {
+		rewrite * /chaos
+		reverse_proxy upstream-b:9001
+	}
+
+	handle /chaos/mock-c {
+		rewrite * /chaos
+		reverse_proxy upstream-c:9001
+	}
+
+	# Main API Gateway (everything else)
+	handle /* {
+		reverse_proxy gateway:8080
+	}
+}
