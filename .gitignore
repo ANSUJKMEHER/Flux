@@ -1,6 +1,11 @@
 # Binaries
 /gateway
 /mockservice
+*.exe
+*.dll
+*.so
+*.dylib
+bin/
 
 # Node
 node_modules/
@@ -8,12 +13,17 @@ dist/
 
 # OS Files
 .DS_Store
+Thumbs.db
+desktop.ini
+*.ico
 
 # IDE
 .idea/
 .vscode/
 
-# Local data
+# Local data & agents
 data/
 *.db
 *.log
+.agents/
+

@@ -2,16 +2,19 @@
 -- KEYS[1] = rate limit key (sorted set)
 -- ARGV[1] = max_requests (max allowed in window)
 -- ARGV[2] = window_us (window size in microseconds)
--- ARGV[3] = now (current time in microseconds)
--- ARGV[4] = request_id (unique identifier for this request, e.g., now + random)
+-- ARGV[3] = optional client now
+-- ARGV[4] = request_id (unique identifier for this request)
 --
 -- Returns: {allowed (0/1), current_count, retry_after_ms}
 
 local key = KEYS[1]
-local max_requests = tonumber(ARGV[1])
-local window_us = tonumber(ARGV[2])
-local now = tonumber(ARGV[3])
+local max_requests = tonumber(ARGV[1]) or 0
+local window_us = tonumber(ARGV[2]) or 0
 local request_id = ARGV[4]
+
+-- Obtain monotonic server time directly from Redis
+local redis_time = redis.call("TIME")
+local now = tonumber(redis_time[1]) * 1000000 + tonumber(redis_time[2])
 
 -- Remove entries older than the window
 local window_start = now - window_us
@@ -37,6 +40,6 @@ else
             retry_after_ms = 0
         end
     end
-    redis.call("PEXPIRE", key, math.ceil(window_us / 1000))
+    -- Do NOT refresh PEXPIRE on denied requests to prevent permanent key retention memory leak
     return {0, current_count, retry_after_ms}
 end

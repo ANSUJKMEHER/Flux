@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -39,12 +41,29 @@ func main() {
 	cfgHolder := config.NewConfigHolder(cfg)
 	log.Printf("config loaded from %s", *configPath)
 
-	// --- Redis client ---
+	// --- Shared HTTP Transport for connection pooling (REL-06) ---
+	sharedTransport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   3 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        1000,
+		MaxIdleConnsPerHost: 200,
+		MaxConnsPerHost:     500,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 5 * time.Second,
+		ForceAttemptHTTP2:   true,
+	}
+
+	// --- Redis client with tuned connection pool (CONC-08) ---
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.Redis.Addr,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-		PoolSize: cfg.Redis.PoolSize,
+		Addr:         cfg.Redis.Addr,
+		Password:     cfg.Redis.Password,
+		DB:           cfg.Redis.DB,
+		PoolSize:     cfg.Redis.PoolSize,
+		MinIdleConns: cfg.Redis.MinIdleConns,
+		PoolTimeout:  cfg.Redis.PoolTimeout,
 	})
 	ctx := context.Background()
 	redisAvailable := true
@@ -52,14 +71,18 @@ func main() {
 		log.Printf("WARNING: Redis not reachable at %s: %v (rate limiting will fail open)", cfg.Redis.Addr, err)
 		redisAvailable = false
 	} else {
-		log.Printf("Redis connected at %s", cfg.Redis.Addr)
+		log.Printf("Redis connected at %s (pool_size=%d)", cfg.Redis.Addr, cfg.Redis.PoolSize)
 	}
 	_ = redisAvailable
 
-	// --- Consistent hashing ring (for rate-limit key sharding) ---
+	// --- Consistent hashing ring (ARCH-01) ---
 	ring := hashring.NewRing(150)
-	ring.AddNode("shard-0")
-	log.Printf("hash ring initialized with %d virtual nodes per shard", 150)
+	for poolName, poolCfg := range cfg.Pools {
+		for _, u := range poolCfg.Upstreams {
+			ring.AddNode(fmt.Sprintf("%s:%s", poolName, u.ID))
+		}
+	}
+	log.Printf("hash ring initialized with %d virtual nodes across upstreams", 150)
 
 	// --- Rate limiters ---
 	tokenBucket := ratelimit.NewTokenBucket(rdb)
@@ -76,6 +99,8 @@ func main() {
 			Pool:          rc.Pool,
 			RateLimitTier: rc.RateLimitTier,
 			Algorithm:     rc.Algorithm,
+			AuthRequired:  rc.AuthRequired,
+			AllowedTiers:  rc.AllowedTiers,
 		})
 	}
 	log.Printf("router initialized with %d routes", len(cfg.Routes))
@@ -138,16 +163,16 @@ func main() {
 	}
 
 	// --- Build the main handler with full middleware chain ---
-	handler := buildHandler(cfgHolder, rdb, ring, tokenBucket, slidingWindow, rt, balancers, breakerReg, globalStats)
+	coreHandler := buildHandler(cfgHolder, rdb, ring, tokenBucket, slidingWindow, rt, balancers, breakerReg, globalStats, sharedTransport)
 
 	// Middleware chain (outermost first):
-	// request_id → logging → metrics → auth → [handler: rate_limit → route → LB → breaker → proxy]
-	handler = middleware.Auth(cfgHolder)(handler)
+	// request_id → logging → metrics → auth → coreHandler
+	handler := middleware.Auth(cfgHolder)(coreHandler)
 	handler = middleware.Metrics()(handler)
 	handler = middleware.Logging()(handler)
 	handler = middleware.RequestID()(handler)
 
-	// Prometheus metrics endpoint (separate from gateway routes)
+	// Prometheus metrics endpoint mounted separately
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.Handle("/", handler)
@@ -194,22 +219,36 @@ func buildHandler(
 	balancers map[string]loadbalancer.Balancer,
 	breakerReg *breaker.BreakerRegistry,
 	stats *admin.Stats,
+	transport *http.Transport,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if stats != nil {
 			stats.TotalRequests.Add(1)
 		}
-		
+
 		cfg := cfgHolder.Get()
 
-		// --- 1. Get tier from context (set by auth middleware) ---
+		// --- 1. Get tier and key from context ---
 		tier := middleware.GetTier(r.Context())
 		apiKey := middleware.GetAPIKey(r.Context())
 
 		// --- 2. Route matching ---
 		matched, ok := rt.Match(r)
 		if !ok {
-			http.Error(w, `{"error":"no matching route"}`, http.StatusNotFound)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"no matching route"}`)
+			return
+		}
+
+		// Store matched route prefix in context for normalized metrics (SEC-03)
+		r = r.WithContext(middleware.SetMatchedPath(r.Context(), matched.PathPrefix))
+
+		// Enforce route-level auth requirement (SEC-04)
+		if matched.AuthRequired && apiKey == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"authentication required for this route"}`)
 			return
 		}
 
@@ -217,6 +256,23 @@ func buildHandler(
 		effectiveTier := tier
 		if matched.RateLimitTier != "" {
 			effectiveTier = matched.RateLimitTier
+		}
+
+		// Enforce allowed tiers if restricted
+		if len(matched.AllowedTiers) > 0 {
+			allowed := false
+			for _, t := range matched.AllowedTiers {
+				if t == effectiveTier {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				fmt.Fprint(w, `{"error":"tier not permitted for this route"}`)
+				return
+			}
 		}
 
 		// --- 3. Rate limiting ---
@@ -227,13 +283,18 @@ func buildHandler(
 				algo = matched.Algorithm
 			}
 
+			// Strip ephemeral client port so IP isn't fragmented per connection (SEC-05)
 			clientID := apiKey
 			if clientID == "" {
-				clientID = r.RemoteAddr
+				clientHost, _, err := net.SplitHostPort(r.RemoteAddr)
+				if err != nil {
+					clientHost = r.RemoteAddr
+				}
+				clientID = clientHost
 			}
 			rlKey := fmt.Sprintf("rl:%s:%s", effectiveTier, clientID)
 
-			// Shard via consistent hashing
+			// Shard key via consistent hashing ring (ARCH-01)
 			_ = ring.GetNode(rlKey)
 
 			var allowed bool
@@ -253,7 +314,7 @@ func buildHandler(
 			}
 
 			if rlErr != nil {
-				// Fail open: log warning but allow request
+				// Fail open on Redis connectivity failure
 				log.Printf("WARNING: rate limiter error (fail-open): %v", rlErr)
 				middleware.RateLimitDecisions.WithLabelValues("error", effectiveTier, algo).Inc()
 			} else if !allowed {
@@ -275,13 +336,17 @@ func buildHandler(
 		// --- 4. Load balancing ---
 		bal, ok := balancers[matched.Pool]
 		if !ok {
-			http.Error(w, `{"error":"upstream pool not found"}`, http.StatusBadGateway)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprint(w, `{"error":"upstream pool not found"}`)
 			return
 		}
 
 		upstream, err := bal.Next()
 		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":"no healthy upstream: %s"}`, err.Error()), http.StatusServiceUnavailable)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, `{"error":"no healthy upstream: %s"}`, err.Error())
 			return
 		}
 
@@ -293,9 +358,10 @@ func buildHandler(
 			middleware.UpstreamActiveConnections.WithLabelValues(upstream.ID).Set(float64(upstream.ActiveConns()))
 		}()
 
-		// --- 5. Circuit breaker + reverse proxy ---
+		// --- 5. Circuit breaker + reverse proxy (REL-01, REL-06) ---
 		cb := breakerReg.Get(upstream.ID)
 
+		var proxyErr error
 		cbErr := cb.Execute(func() error {
 			target, parseErr := url.Parse(upstream.URL)
 			if parseErr != nil {
@@ -303,35 +369,47 @@ func buildHandler(
 			}
 
 			proxy := &httputil.ReverseProxy{
+				Transport: transport,
 				Director: func(req *http.Request) {
 					req.URL.Scheme = target.Scheme
 					req.URL.Host = target.Host
 					req.Host = target.Host
 					if matched.StripPrefix {
 						req.URL.Path = strings.TrimPrefix(req.URL.Path, matched.PathPrefix)
-						if req.URL.Path == "" {
-							req.URL.Path = "/"
+						// Ensure path always has leading slash (ARCH-08)
+						if !strings.HasPrefix(req.URL.Path, "/") {
+							req.URL.Path = "/" + req.URL.Path
 						}
 					}
 				},
-				ErrorHandler: func(rw http.ResponseWriter, req *http.Request, proxyErr error) {
-					log.Printf("proxy error to %s: %v", upstream.ID, proxyErr)
-					// Don't write response here — the error will be returned
-					// to the circuit breaker's Execute, which handles it
+				ModifyResponse: func(resp *http.Response) error {
+					if resp.StatusCode >= 500 {
+						return fmt.Errorf("upstream %s returned HTTP %d", upstream.ID, resp.StatusCode)
+					}
+					return nil
+				},
+				ErrorHandler: func(rw http.ResponseWriter, req *http.Request, pErr error) {
+					proxyErr = pErr
 				},
 			}
 
 			proxy.ServeHTTP(w, r)
+			if proxyErr != nil {
+				return proxyErr
+			}
 			return nil
 		})
 
 		if cbErr != nil {
-			if cbErr == breaker.ErrCircuitOpen {
-				w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Type", "application/json")
+			if errors.Is(cbErr, breaker.ErrCircuitOpen) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				fmt.Fprintf(w, `{"error":"circuit breaker open for upstream %s"}`, upstream.ID)
+			} else {
+				w.WriteHeader(http.StatusBadGateway)
+				fmt.Fprintf(w, `{"error":"upstream failure: %v"}`, cbErr)
 			}
-			// Other errors from the proxy were already handled by ErrorHandler
+			return
 		}
 	})
 }

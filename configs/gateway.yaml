@@ -13,7 +13,9 @@ redis:
   addr: "localhost:6379"
   password: ""
   db: 0
-  pool_size: 10
+  pool_size: 200
+  min_idle_conns: 50
+  pool_timeout: 4s
 
 auth:
   mode: "api_key"

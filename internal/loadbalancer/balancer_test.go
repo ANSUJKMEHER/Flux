@@ -269,22 +269,61 @@ func TestRoundRobin_ConcurrentSafety(t *testing.T) {
 
 // --- Benchmarks ---
 
+var (
+	sinkUpstream *Upstream
+	sinkErr      error
+)
+
 func BenchmarkRoundRobin(b *testing.B) {
 	ups := makeUpstreams(5)
 	rr := NewRoundRobin(ups)
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rr.Next()
+		sinkUpstream, sinkErr = rr.Next()
 	}
+}
+
+func BenchmarkRoundRobinParallel(b *testing.B) {
+	ups := makeUpstreams(5)
+	rr := NewRoundRobin(ups)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			u, err := rr.Next()
+			if err != nil {
+				b.Fatal(err)
+			}
+			sinkUpstream = u
+		}
+	})
 }
 
 func BenchmarkLeastConn(b *testing.B) {
 	ups := makeUpstreams(5)
 	lc := NewLeastConn(ups)
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		lc.Next()
+		sinkUpstream, sinkErr = lc.Next()
 	}
+}
+
+func BenchmarkLeastConnParallel(b *testing.B) {
+	ups := makeUpstreams(5)
+	lc := NewLeastConn(ups)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			u, err := lc.Next()
+			if err != nil {
+				b.Fatal(err)
+			}
+			sinkUpstream = u
+		}
+	})
 }
 
 func BenchmarkWeighted(b *testing.B) {
@@ -293,17 +332,54 @@ func BenchmarkWeighted(b *testing.B) {
 		u.Weight = i + 1
 	}
 	w := NewWeighted(ups)
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		w.Next()
+		sinkUpstream, sinkErr = w.Next()
 	}
+}
+
+func BenchmarkWeightedParallel(b *testing.B) {
+	ups := makeUpstreams(5)
+	for i, u := range ups {
+		u.Weight = i + 1
+	}
+	w := NewWeighted(ups)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			u, err := w.Next()
+			if err != nil {
+				b.Fatal(err)
+			}
+			sinkUpstream = u
+		}
+	})
 }
 
 func BenchmarkPowerOfTwo(b *testing.B) {
 	ups := makeUpstreams(5)
 	p := NewPowerOfTwo(ups)
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p.Next()
+		sinkUpstream, sinkErr = p.Next()
 	}
+}
+
+func BenchmarkPowerOfTwoParallel(b *testing.B) {
+	ups := makeUpstreams(5)
+	p := NewPowerOfTwo(ups)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			u, err := p.Next()
+			if err != nil {
+				b.Fatal(err)
+			}
+			sinkUpstream = u
+		}
+	})
 }

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -63,6 +64,22 @@ var (
 	)
 )
 
+// MatchedPathKey is the context key for the normalized matched route path.
+const MatchedPathKey contextKey = "matched_path"
+
+// SetMatchedPath stores the normalized matched route pattern in context.
+func SetMatchedPath(ctx context.Context, path string) context.Context {
+	return context.WithValue(ctx, MatchedPathKey, path)
+}
+
+// GetMatchedPath extracts the normalized route path, defaulting to "unmatched".
+func GetMatchedPath(ctx context.Context) string {
+	if v, ok := ctx.Value(MatchedPathKey).(string); ok && v != "" {
+		return v
+	}
+	return "unmatched"
+}
+
 // Metrics returns middleware that records Prometheus metrics for each request.
 func Metrics() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -75,10 +92,8 @@ func Metrics() func(http.Handler) http.Handler {
 			duration := time.Since(start).Seconds()
 			tier := GetTier(r.Context())
 
-			// Normalize path to avoid cardinality explosion
-			// In production you'd use a route template, but for the demo
-			// we use the matched route prefix (set by the handler)
-			path := r.URL.Path
+			// Normalize path to prevent high-cardinality memory exhaustion
+			path := GetMatchedPath(r.Context())
 
 			RequestsTotal.WithLabelValues(
 				r.Method,

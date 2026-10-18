@@ -11,6 +11,7 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sync/atomic"
@@ -31,6 +32,7 @@ type Server struct {
 	cfgHolder      *config.ConfigHolder
 	upstreamsByPool map[string][]*loadbalancer.Upstream
 	breakerRegistry *breaker.BreakerRegistry
+	onReload       func(*config.GatewayConfig) error
 	mux            *http.ServeMux
 	stats          *Stats
 }
@@ -51,36 +53,154 @@ func NewServer(
 	}
 
 	s.mux.HandleFunc("GET /admin/config", s.handleGetConfig)
+	s.mux.HandleFunc("PUT /admin/config", s.handlePutConfig)
 	s.mux.HandleFunc("GET /admin/health", s.handleHealth)
 	s.mux.HandleFunc("GET /admin/upstreams", s.handleListUpstreams)
 	s.mux.HandleFunc("GET /admin/breakers", s.handleListBreakers)
 	s.mux.HandleFunc("GET /admin/stats", s.handleStats)
 
-	// Serve the	// Static dashboard
+	// Serve the static dashboard
 	fs := http.FileServer(http.Dir("web/dashboard/dist"))
 	s.mux.Handle("/dashboard/", http.StripPrefix("/dashboard/", fs))
 
 	return s
 }
 
-// Handler returns the admin API HTTP handler with CORS.
+// SetOnReload sets an optional callback invoked when configuration is reloaded via PUT /admin/config.
+func (s *Server) SetOnReload(fn func(*config.GatewayConfig) error) {
+	s.onReload = fn
+}
+
+// Handler returns the admin API HTTP handler with authenticated and restricted CORS middleware.
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
+		cfg := s.cfgHolder.Get()
+
+		// 1. CORS validation: restrict to configured allowed origins or same-origin
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			allowed := false
+			if len(cfg.Admin.AllowedOrigins) == 0 {
+				// Default to local/dashboard same-origin
+				allowed = true
+			} else {
+				for _, o := range cfg.Admin.AllowedOrigins {
+					if o == "*" || o == origin {
+						allowed = true
+						break
+					}
+				}
+			}
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.Header().Set("Vary", "Origin")
+			} else {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+
+		// 2. Authentication check if Admin.Token is configured
+		if cfg.Admin.Token != "" && (r.URL.Path != "/admin/health" && r.URL.Path != "/dashboard/") {
+			authHeader := r.Header.Get("Authorization")
+			expected := "Bearer " + cfg.Admin.Token
+			if authHeader != expected {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprint(w, `{"error":"unauthorized: invalid or missing admin token"}`)
+				return
+			}
+		}
+
 		s.mux.ServeHTTP(w, r)
 	})
 }
 
+// SanitizedConfig protects plaintext credentials from public exposure.
+type SanitizedConfig struct {
+	Server     config.ServerConfig             `json:"server"`
+	Admin      config.AdminConfig              `json:"admin"`
+	Routes     []config.RouteConfig            `json:"routes"`
+	Pools      map[string]config.UpstreamPool  `json:"pools"`
+	RateLimits map[string]config.RateLimitTier `json:"rate_limits"`
+	Breaker    config.BreakerConfig            `json:"breaker"`
+	Health     config.HealthConfig             `json:"health"`
+	Auth       SanitizedAuthConfig             `json:"auth"`
+	RedisAddr  string                          `json:"redis_addr"`
+}
+
+// SanitizedAuthConfig summarizes auth state without leaking keys or secrets.
+type SanitizedAuthConfig struct {
+	Mode           string `json:"mode"`
+	ConfiguredKeys int    `json:"configured_keys_count"`
+	JWTEnabled     bool   `json:"jwt_enabled"`
+	JWTIssuer      string `json:"jwt_issuer"`
+}
+
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := s.cfgHolder.Get()
+	sanitized := SanitizedConfig{
+		Server:     cfg.Server,
+		Admin:      config.AdminConfig{ListenAddr: cfg.Admin.ListenAddr, Enabled: cfg.Admin.Enabled, AllowedOrigins: cfg.Admin.AllowedOrigins},
+		Routes:     cfg.Routes,
+		Pools:      cfg.Pools,
+		RateLimits: cfg.RateLimits,
+		Breaker:    cfg.Breaker,
+		Health:     cfg.Health,
+		Auth: SanitizedAuthConfig{
+			Mode:           cfg.Auth.Mode,
+			ConfiguredKeys: len(cfg.Auth.APIKeys),
+			JWTEnabled:     cfg.Auth.JWT.Secret != "",
+			JWTIssuer:      cfg.Auth.JWT.Issuer,
+		},
+		RedisAddr: cfg.Redis.Addr,
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cfg)
+	json.NewEncoder(w).Encode(sanitized)
+}
+
+func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	var body []byte
+	var err error
+	if r.Body != nil {
+		body, err = io.ReadAll(r.Body)
+	}
+	if err != nil || len(body) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":"missing or unreadable request body"}`)
+		return
+	}
+
+	newCfg, err := config.ParseYAML(body)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, `{"error":"invalid configuration: %s"}`, err.Error())
+		return
+	}
+
+	if s.onReload != nil {
+		if err := s.onReload(newCfg); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"reload hook failed: %s"}`, err.Error())
+			return
+		}
+	}
+
+	s.cfgHolder.Swap(newCfg)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, `{"status":"reloaded"}`)
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {

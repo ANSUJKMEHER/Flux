@@ -4,6 +4,8 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"math/rand/v2"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -11,6 +13,8 @@ import (
 
 //go:embed lua/sliding_window.lua
 var slidingWindowLua string
+
+var swSeq atomic.Uint64
 
 // SlidingWindow implements a distributed sliding window log rate limiter using Redis.
 // It uses a sorted set (ZSET) where each request's timestamp is stored as both
@@ -41,8 +45,9 @@ func NewSlidingWindow(rdb *redis.Client) *SlidingWindow {
 func (sw *SlidingWindow) Allow(ctx context.Context, cmdable redis.Cmdable, key string, maxRequests int, window time.Duration) (bool, time.Duration, error) {
 	now := time.Now().UnixMicro()
 	windowUs := window.Microseconds()
-	// Use timestamp + nano suffix for uniqueness within the ZSET
-	requestID := fmt.Sprintf("%d:%d", now, time.Now().UnixNano())
+	seq := swSeq.Add(1)
+	// Guarantee complete uniqueness under high-concurrency bursts
+	requestID := fmt.Sprintf("%d:%d:%d", now, seq, rand.Uint64())
 
 	result, err := sw.script.Run(ctx, cmdable, []string{key},
 		maxRequests,

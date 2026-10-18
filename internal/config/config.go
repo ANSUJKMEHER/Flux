@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -32,16 +32,20 @@ type ServerConfig struct {
 
 // AdminConfig holds the admin API listener settings.
 type AdminConfig struct {
-	ListenAddr string `yaml:"listen_addr"`
-	Enabled    bool   `yaml:"enabled"`
+	ListenAddr     string   `yaml:"listen_addr"`
+	Enabled        bool     `yaml:"enabled"`
+	Token          string   `yaml:"token,omitempty"`           // Bearer token for admin authentication
+	AllowedOrigins []string `yaml:"allowed_origins,omitempty"` // Trusted CORS origins
 }
 
 // RedisConfig holds the Redis connection settings.
 type RedisConfig struct {
-	Addr     string `yaml:"addr"`
-	Password string `yaml:"password"`
-	DB       int    `yaml:"db"`
-	PoolSize int    `yaml:"pool_size"`
+	Addr         string        `yaml:"addr"`
+	Password     string        `yaml:"password"`
+	DB           int           `yaml:"db"`
+	PoolSize     int           `yaml:"pool_size"`
+	MinIdleConns int           `yaml:"min_idle_conns"`
+	PoolTimeout  time.Duration `yaml:"pool_timeout"`
 }
 
 // AuthConfig holds authentication settings.
@@ -53,19 +57,21 @@ type AuthConfig struct {
 
 // JWTConfig holds JWT-specific settings.
 type JWTConfig struct {
-	Secret       string `yaml:"secret"`
-	TierClaim    string `yaml:"tier_claim"`    // JWT claim field for tier
-	Issuer       string `yaml:"issuer"`
+	Secret    string `yaml:"secret"`
+	TierClaim string `yaml:"tier_claim"` // JWT claim field for tier
+	Issuer    string `yaml:"issuer"`
 }
 
 // RouteConfig defines a single routing rule.
 type RouteConfig struct {
-	PathPrefix   string `yaml:"path_prefix"`
-	Host         string `yaml:"host,omitempty"`
-	StripPrefix  bool   `yaml:"strip_prefix"`
-	Pool         string `yaml:"pool"`             // upstream pool name
-	RateLimitTier string `yaml:"rate_limit_tier"` // overrides auth-derived tier if set
-	Algorithm    string `yaml:"algorithm,omitempty"` // "token_bucket" or "sliding_window"
+	PathPrefix    string   `yaml:"path_prefix"`
+	Host          string   `yaml:"host,omitempty"`
+	StripPrefix   bool     `yaml:"strip_prefix"`
+	Pool          string   `yaml:"pool"`             // upstream pool name
+	RateLimitTier string   `yaml:"rate_limit_tier"` // overrides auth-derived tier if set
+	Algorithm     string   `yaml:"algorithm,omitempty"` // "token_bucket" or "sliding_window"
+	AuthRequired  bool     `yaml:"auth_required"`
+	AllowedTiers  []string `yaml:"allowed_tiers,omitempty"`
 }
 
 // UpstreamPool defines a named group of upstream service instances.
@@ -104,16 +110,11 @@ type HealthConfig struct {
 	Threshold   int           `yaml:"threshold"`    // consecutive failures to mark unhealthy
 }
 
-// Load reads and parses a YAML config file.
-func Load(path string) (*GatewayConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("config: read file %s: %w", path, err)
-	}
-
+// ParseYAML parses and validates raw YAML configuration bytes.
+func ParseYAML(data []byte) (*GatewayConfig, error) {
 	cfg := &GatewayConfig{}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+		return nil, fmt.Errorf("config: parse yaml: %w", err)
 	}
 
 	setDefaults(cfg)
@@ -123,6 +124,16 @@ func Load(path string) (*GatewayConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+// Load reads and parses a YAML config file.
+func Load(path string) (*GatewayConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("config: read file %s: %w", path, err)
+	}
+
+	return ParseYAML(data)
 }
 
 // setDefaults fills in zero-value fields with sensible defaults.
@@ -146,7 +157,13 @@ func setDefaults(cfg *GatewayConfig) {
 		cfg.Redis.Addr = "localhost:6379"
 	}
 	if cfg.Redis.PoolSize == 0 {
-		cfg.Redis.PoolSize = 10
+		cfg.Redis.PoolSize = 200
+	}
+	if cfg.Redis.MinIdleConns == 0 {
+		cfg.Redis.MinIdleConns = 50
+	}
+	if cfg.Redis.PoolTimeout == 0 {
+		cfg.Redis.PoolTimeout = 4 * time.Second
 	}
 	if cfg.Auth.Mode == "" {
 		cfg.Auth.Mode = "api_key"
@@ -203,10 +220,10 @@ func (c *GatewayConfig) Validate() error {
 			return fmt.Errorf("pool %q: at least one upstream is required", name)
 		}
 		validStrategies := map[string]bool{
-			"round_robin":    true,
-			"least_conn":     true,
-			"weighted":       true,
-			"power_of_two":   true,
+			"round_robin":  true,
+			"least_conn":   true,
+			"weighted":     true,
+			"power_of_two": true,
 		}
 		if !validStrategies[pool.Strategy] {
 			return fmt.Errorf("pool %q: unknown strategy %q", name, pool.Strategy)
@@ -222,25 +239,22 @@ func (c *GatewayConfig) Validate() error {
 
 // ConfigHolder provides thread-safe access to a hot-reloadable config.
 type ConfigHolder struct {
-	mu  sync.RWMutex
-	cfg *GatewayConfig
+	ptr atomic.Pointer[GatewayConfig]
 }
 
 // NewConfigHolder wraps an initial config for concurrent access.
 func NewConfigHolder(cfg *GatewayConfig) *ConfigHolder {
-	return &ConfigHolder{cfg: cfg}
+	h := &ConfigHolder{}
+	h.ptr.Store(cfg)
+	return h
 }
 
-// Get returns the current config (read-locked).
+// Get returns the current config without lock contention.
 func (h *ConfigHolder) Get() *GatewayConfig {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.cfg
+	return h.ptr.Load()
 }
 
-// Swap atomically replaces the config (write-locked).
+// Swap atomically replaces the config.
 func (h *ConfigHolder) Swap(cfg *GatewayConfig) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.cfg = cfg
+	h.ptr.Store(cfg)
 }

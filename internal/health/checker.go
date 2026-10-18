@@ -10,6 +10,7 @@ package health
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -32,9 +33,11 @@ type Checker struct {
 	client    *http.Client
 	upstreams []*loadbalancer.Upstream
 
-	mu             sync.Mutex
-	failureCounts  map[string]int // upstream ID -> consecutive failure count
-	cancel         context.CancelFunc
+	mu            sync.Mutex
+	failureCounts map[string]int // upstream ID -> consecutive failure count
+	successCounts map[string]int // upstream ID -> consecutive success count
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
 }
 
 // NewChecker creates a health checker for the given upstreams.
@@ -57,6 +60,7 @@ func NewChecker(cfg CheckerConfig, upstreams []*loadbalancer.Upstream) *Checker 
 		client:        &http.Client{Timeout: cfg.Timeout},
 		upstreams:     upstreams,
 		failureCounts: make(map[string]int),
+		successCounts: make(map[string]int),
 	}
 }
 
@@ -67,18 +71,23 @@ func (c *Checker) Start() {
 	c.cancel = cancel
 
 	for _, up := range c.upstreams {
-		go c.checkLoop(ctx, up)
+		c.wg.Add(1)
+		go func(u *loadbalancer.Upstream) {
+			defer c.wg.Done()
+			c.checkLoop(ctx, u)
+		}(up)
 	}
 
 	log.Printf("health checker started for %d upstreams (interval=%s, path=%s)",
 		len(c.upstreams), c.config.Interval, c.config.Path)
 }
 
-// Stop cancels all health check goroutines.
+// Stop cancels all health check goroutines and waits for in-flight probes to finish.
 func (c *Checker) Stop() {
 	if c.cancel != nil {
 		c.cancel()
-		log.Println("health checker stopped")
+		c.wg.Wait()
+		log.Println("health checker stopped cleanly")
 	}
 }
 
@@ -103,15 +112,23 @@ func (c *Checker) probe(ctx context.Context, up *loadbalancer.Upstream) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		c.recordFailure(up)
+		if ctx.Err() == nil {
+			c.recordFailure(up)
+		}
 		return
 	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		c.recordFailure(up)
+		// Ignore probe errors if context was canceled during shutdown
+		if ctx.Err() == nil {
+			c.recordFailure(up)
+		}
 		return
 	}
+
+	// Drain response body to allow TCP connection reuse in Keep-Alive pool
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
@@ -121,11 +138,12 @@ func (c *Checker) probe(ctx context.Context, up *loadbalancer.Upstream) {
 	}
 }
 
-// recordFailure increments the consecutive failure count and marks unhealthy if threshold hit.
+// recordFailure increments consecutive failure count and marks unhealthy if threshold hit.
 func (c *Checker) recordFailure(up *loadbalancer.Upstream) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.successCounts[up.ID] = 0
 	c.failureCounts[up.ID]++
 	if c.failureCounts[up.ID] >= c.config.Threshold {
 		if up.IsHealthy() {
@@ -136,14 +154,23 @@ func (c *Checker) recordFailure(up *loadbalancer.Upstream) {
 	}
 }
 
-// recordSuccess resets the failure counter and marks the upstream healthy.
+// recordSuccess increments consecutive successes and restores health only after hysteresis threshold.
 func (c *Checker) recordSuccess(up *loadbalancer.Upstream) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.failureCounts[up.ID] = 0
-	if !up.IsHealthy() {
-		log.Printf("health: upstream %s marked HEALTHY (recovered)", up.ID)
+	c.successCounts[up.ID]++
+
+	// Require consecutive successes to prevent flapping
+	successThreshold := 2
+	if c.config.Threshold < successThreshold {
+		successThreshold = c.config.Threshold
+	}
+
+	if !up.IsHealthy() && c.successCounts[up.ID] >= successThreshold {
+		log.Printf("health: upstream %s marked HEALTHY after %d consecutive successes", up.ID, c.successCounts[up.ID])
 		up.SetHealthy(true)
+		c.successCounts[up.ID] = 0
 	}
 }

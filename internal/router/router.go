@@ -10,6 +10,7 @@
 package router
 
 import (
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -17,12 +18,14 @@ import (
 
 // Route defines a single routing rule.
 type Route struct {
-	PathPrefix    string // required: matches if request path starts with this
-	Host          string // optional: if set, must match request Host header
-	StripPrefix   bool   // if true, strip PathPrefix before forwarding
-	Pool          string // upstream pool name
-	RateLimitTier string // override auth-derived tier (empty = use auth tier)
-	Algorithm     string // override tier algorithm (empty = use tier default)
+	PathPrefix    string   // required: matches if request path starts with this
+	Host          string   // optional: if set, must match request Host header
+	StripPrefix   bool     // if true, strip PathPrefix before forwarding
+	Pool          string   // upstream pool name
+	RateLimitTier string   // override auth-derived tier (empty = use auth tier)
+	Algorithm     string   // override tier algorithm (empty = use tier default)
+	AuthRequired  bool     // whether authentication is mandatory for this route
+	AllowedTiers  []string // allowed rate limit tiers (empty = all)
 }
 
 // Router performs first-match routing against an ordered list of routes.
@@ -62,10 +65,9 @@ func (r *Router) Match(req *http.Request) (Route, bool) {
 	for _, route := range routes {
 		// Host check (if configured)
 		if route.Host != "" {
-			// Strip port from host header for comparison
 			reqHost := host
-			if idx := strings.Index(reqHost, ":"); idx != -1 {
-				reqHost = reqHost[:idx]
+			if h, _, err := net.SplitHostPort(host); err == nil {
+				reqHost = h
 			}
 			if !strings.EqualFold(reqHost, route.Host) {
 				continue

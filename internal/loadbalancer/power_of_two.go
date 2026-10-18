@@ -1,8 +1,7 @@
 package loadbalancer
 
 import (
-	"math/rand"
-	"sync"
+	"math/rand/v2"
 )
 
 // PowerOfTwo implements the "power of two random choices" strategy.
@@ -11,54 +10,60 @@ import (
 // random healthy upstreams and forwards to the one with fewer active
 // connections. This achieves near-optimal load distribution with O(1) selection
 // and minimal coordination — the key insight from the seminal Mitzenmacher paper.
-//
-// Why it works: exponential improvement in max load vs. random selection.
-// With 1 random choice, max load is O(log n / log log n).
-// With 2 random choices, max load drops to O(log log n).
 type PowerOfTwo struct {
-	mu        sync.Mutex
 	upstreams []*Upstream
-	rng       *rand.Rand
 }
 
 // NewPowerOfTwo creates a power-of-two-choices balancer.
 func NewPowerOfTwo(upstreams []*Upstream) *PowerOfTwo {
 	return &PowerOfTwo{
 		upstreams: upstreams,
-		rng:       rand.New(rand.NewSource(rand.Int63())),
 	}
 }
 
-// Next picks two random healthy upstreams and returns the less loaded one.
+// Next picks two random upstreams and returns the less loaded healthy one.
+// Runs completely lock-free with zero heap allocations per call.
 func (p *PowerOfTwo) Next() (*Upstream, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	n := len(p.upstreams)
+	if n == 0 {
+		return nil, ErrNoHealthyUpstream
+	}
+	if n == 1 {
+		if p.upstreams[0].IsHealthy() {
+			return p.upstreams[0], nil
+		}
+		return nil, ErrNoHealthyUpstream
+	}
 
-	// Collect healthy upstreams
-	healthy := make([]*Upstream, 0, len(p.upstreams))
+	// Pick two distinct random indices using thread-safe, lock-free PRNG
+	i := rand.IntN(n)
+	j := rand.IntN(n - 1)
+	if j >= i {
+		j++
+	}
+
+	a, b := p.upstreams[i], p.upstreams[j]
+	aOk, bOk := a.IsHealthy(), b.IsHealthy()
+
+	if aOk && bOk {
+		if a.ActiveConns() <= b.ActiveConns() {
+			return a, nil
+		}
+		return b, nil
+	}
+	if aOk {
+		return a, nil
+	}
+	if bOk {
+		return b, nil
+	}
+
+	// Fallback scan if both randomly sampled nodes were unhealthy
 	for _, up := range p.upstreams {
 		if up.IsHealthy() {
-			healthy = append(healthy, up)
+			return up, nil
 		}
 	}
 
-	switch len(healthy) {
-	case 0:
-		return nil, ErrNoHealthyUpstream
-	case 1:
-		return healthy[0], nil
-	}
-
-	// Pick two distinct random indices
-	i := p.rng.Intn(len(healthy))
-	j := p.rng.Intn(len(healthy) - 1)
-	if j >= i {
-		j++ // ensure j != i
-	}
-
-	a, b := healthy[i], healthy[j]
-	if a.ActiveConns() <= b.ActiveConns() {
-		return a, nil
-	}
-	return b, nil
+	return nil, ErrNoHealthyUpstream
 }

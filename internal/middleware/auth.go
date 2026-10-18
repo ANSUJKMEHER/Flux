@@ -9,8 +9,10 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/ANSUJKMEHER/rate-limiter-gateway/internal/config"
 )
@@ -51,25 +53,50 @@ func GetRequestID(ctx context.Context) string {
 	return ""
 }
 
+// matchAPIKey performs constant-time comparison against configured API keys.
+func matchAPIKey(provided string, keys map[string]string) (string, bool) {
+	if provided == "" || len(keys) == 0 {
+		return "", false
+	}
+	var matchedTier string
+	var found bool
+	providedBytes := []byte(provided)
+	for k, t := range keys {
+		kBytes := []byte(k)
+		if subtle.ConstantTimeCompare(kBytes, providedBytes) == 1 {
+			matchedTier = t
+			found = true
+		}
+	}
+	return matchedTier, found
+}
+
 // Auth returns middleware that validates API keys and sets the tier in context.
-// If the auth mode is "jwt", it delegates to JWT validation.
-// Requests without an API key are assigned the "free" tier (anonymous access).
-// Invalid keys are rejected with 401.
+// Requests without an API key default to "free" tier.
+// Invalid keys are rejected with 401 Unauthorized.
 func Auth(cfgHolder *config.ConfigHolder) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cfg := cfgHolder.Get()
 
 			apiKey := r.Header.Get("X-API-Key")
+			// Also check Bearer token if X-API-Key is not set
+			if apiKey == "" {
+				authHeader := r.Header.Get("Authorization")
+				if strings.HasPrefix(authHeader, "Bearer ") {
+					apiKey = strings.TrimPrefix(authHeader, "Bearer ")
+				}
+			}
+
 			tier := "free"
 
 			if apiKey != "" {
-				if t, ok := cfg.Auth.APIKeys[apiKey]; ok {
+				if t, ok := matchAPIKey(apiKey, cfg.Auth.APIKeys); ok {
 					tier = t
 				} else {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusUnauthorized)
-					fmt.Fprint(w, `{"error":"invalid API key"}`)
+					fmt.Fprint(w, `{"error":"invalid API key or credentials"}`)
 					return
 				}
 			}

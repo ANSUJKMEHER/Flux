@@ -184,14 +184,22 @@ func TestGetNodes_MoreThanAvailable(t *testing.T) {
 	}
 }
 
+var sinkNode string
+
 func BenchmarkGetNode(b *testing.B) {
 	r := NewRing(150)
 	for i := 0; i < 10; i++ {
 		r.AddNode(fmt.Sprintf("node-%d", i))
 	}
 
+	keys := make([]string, 1024)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("benchmark-key-%d", i)
+	}
+
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		r.GetNode(fmt.Sprintf("key-%d", i))
+		sinkNode = r.GetNode(keys[i&1023])
 	}
 }

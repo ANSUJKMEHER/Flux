@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -35,7 +36,7 @@ func main() {
 	mock1 := startService("users-1", "9001")
 	mock2 := startService("users-2", "9002")
 	mock3 := startService("orders-3", "9003")
-	gwCmd := exec.Command("d:\\rate\\bin\\gateway.exe", "-config", "configs/gateway.yaml")
+	gwCmd := getCommand("gateway", "-config", "configs/gateway.yaml")
 	gwCmd.Stdout = nil
 	gwCmd.Stderr = nil
 	if err := gwCmd.Start(); err != nil {
@@ -233,8 +234,26 @@ func main() {
 	fmt.Println("==========================================================")
 }
 
+func getCommand(name string, args ...string) *exec.Cmd {
+	// Look in local bin/ or current directory
+	candidates := []string{
+		filepath.Join(".", "bin", name),
+		filepath.Join(".", "bin", name+".exe"),
+		filepath.Join(".", name),
+		filepath.Join(".", name+".exe"),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return exec.Command(c, args...)
+		}
+	}
+	// Fall back to go run
+	goArgs := append([]string{"run", "./cmd/" + name}, args...)
+	return exec.Command("go", goArgs...)
+}
+
 func startService(name, port string) *exec.Cmd {
-	cmd := exec.Command("d:\\rate\\bin\\mockservice.exe")
+	cmd := getCommand("mockservice")
 	cmd.Env = append(os.Environ(), "MOCK_SERVICE_NAME="+name, "MOCK_PORT="+port)
 	cmd.Stdout = nil
 	cmd.Stderr = nil

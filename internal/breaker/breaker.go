@@ -87,6 +87,7 @@ type CircuitBreaker struct {
 	consecutiveFails int
 	consecutiveOK    int
 	openedAt         time.Time
+	halfOpenProbes   int // in-flight probe requests in HalfOpen state
 
 	// Counts for observability (total lifetime)
 	totalRequests  int64
@@ -115,7 +116,7 @@ func New(settings Settings) *CircuitBreaker {
 // Execute wraps a function call with circuit breaker protection.
 //
 // If the circuit is Open, Execute returns ErrCircuitOpen immediately.
-// If the circuit is HalfOpen, it allows the call but monitors the result.
+// If the circuit is HalfOpen, it allows a single probe request through while rejecting concurrent requests.
 // The function fn should return nil on success, non-nil on failure.
 func (cb *CircuitBreaker) Execute(fn func() error) error {
 	cb.mu.Lock()
@@ -131,14 +132,31 @@ func (cb *CircuitBreaker) Execute(fn func() error) error {
 		}
 	}
 
+	// Throttle concurrent probes in HalfOpen to prevent thundering herd
+	if cb.state == StateHalfOpen {
+		if cb.halfOpenProbes >= 1 {
+			cb.totalRejected++
+			cb.mu.Unlock()
+			return ErrCircuitOpen
+		}
+		cb.halfOpenProbes++
+	}
+
 	cb.totalRequests++
 	cb.mu.Unlock()
 
-	// Execute the actual call (outside the lock — we don't hold the lock during IO)
+	// Execute the actual call (outside the lock)
 	err := fn()
 
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
+
+	if cb.state == StateHalfOpen {
+		cb.halfOpenProbes--
+		if cb.halfOpenProbes < 0 {
+			cb.halfOpenProbes = 0
+		}
+	}
 
 	if err != nil {
 		cb.onFailure()
@@ -193,6 +211,7 @@ func (cb *CircuitBreaker) transitionTo(newState State) {
 	// Reset counters on transition
 	cb.consecutiveFails = 0
 	cb.consecutiveOK = 0
+	cb.halfOpenProbes = 0
 
 	if newState == StateOpen {
 		cb.openedAt = time.Now()

@@ -3,7 +3,6 @@
 }
 
 {$DOMAIN} {
-	
 	# Dashboard UI and Admin APIs
 	handle_path /dashboard* {
 		reverse_proxy gateway:9091
@@ -13,20 +12,25 @@
 		reverse_proxy gateway:9091
 	}
 
-	# Chaos API proxies (mapped to mock upstreams internally)
-	handle /chaos/mock-a {
-		rewrite * /chaos
-		reverse_proxy upstream-a:9001
-	}
-	
-	handle /chaos/mock-b {
-		rewrite * /chaos
-		reverse_proxy upstream-b:9001
-	}
+	# Chaos API proxies (restricted to internal management networks)
+	handle /chaos/* {
+		@blocked not remote_ip 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.1/32
+		respond @blocked "Access Denied" 403
 
-	handle /chaos/mock-c {
-		rewrite * /chaos
-		reverse_proxy upstream-c:9001
+		handle /chaos/mock-a {
+			rewrite * /chaos
+			reverse_proxy upstream-a:9001
+		}
+		
+		handle /chaos/mock-b {
+			rewrite * /chaos
+			reverse_proxy upstream-b:9001
+		}
+
+		handle /chaos/mock-c {
+			rewrite * /chaos
+			reverse_proxy upstream-c:9001
+		}
 	}
 
 	# Main API Gateway (everything else)

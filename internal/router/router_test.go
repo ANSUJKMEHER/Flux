@@ -103,17 +103,25 @@ func TestSwapRoutes(t *testing.T) {
 	}
 }
 
-func TestRouteCount(t *testing.T) {
+func TestMatch_IPv6Host(t *testing.T) {
 	r := New()
-	if r.RouteCount() != 0 {
-		t.Errorf("initial RouteCount = %d, want 0", r.RouteCount())
-	}
-	r.AddRoute(Route{PathPrefix: "/a", Pool: "a"})
-	r.AddRoute(Route{PathPrefix: "/b", Pool: "b"})
-	if r.RouteCount() != 2 {
-		t.Errorf("RouteCount = %d, want 2", r.RouteCount())
+	r.AddRoute(Route{
+		PathPrefix: "/api",
+		Host:       "::1",
+		Pool:       "ipv6-pool",
+	})
+
+	req, _ := http.NewRequest("GET", "http://[::1]:8080/api/users", nil)
+	got, ok := r.Match(req)
+	if !ok || got.Pool != "ipv6-pool" {
+		t.Errorf("ipv6 match: pool=%q ok=%v, want ipv6-pool", got.Pool, ok)
 	}
 }
+
+var (
+	sinkRoute Route
+	sinkMatch bool
+)
 
 func BenchmarkMatch(b *testing.B) {
 	r := New()
@@ -122,8 +130,29 @@ func BenchmarkMatch(b *testing.B) {
 	}
 
 	req, _ := http.NewRequest("GET", "http://localhost/api/v1/serviceT/resource", nil)
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		r.Match(req)
+		sinkRoute, sinkMatch = r.Match(req)
 	}
+}
+
+func BenchmarkMatchParallel(b *testing.B) {
+	r := New()
+	for i := 0; i < 20; i++ {
+		r.AddRoute(Route{PathPrefix: "/api/v1/service" + string(rune('A'+i)), Pool: "pool"})
+	}
+
+	req, _ := http.NewRequest("GET", "http://localhost/api/v1/serviceT/resource", nil)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			rt, ok := r.Match(req)
+			if !ok {
+				b.Fatal("match failed")
+			}
+			sinkRoute = rt
+		}
+	})
 }
