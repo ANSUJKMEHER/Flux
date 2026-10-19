@@ -4,7 +4,7 @@
 
 {$DOMAIN} {
 	# Dashboard UI and Admin APIs
-	handle_path /dashboard* {
+	handle /dashboard* {
 		reverse_proxy gateway:9091
 	}
 
