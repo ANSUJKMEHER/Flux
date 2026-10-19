@@ -187,13 +187,16 @@ During load testing, setting downstream mock service latencies to **0ms** caused
 * **The Takeaway:** This showcases a classic system design trade-off: **reducing backend service time without client-side pacing or backoffs increases client concurrency depth, resulting in gateway CPU cache thrashing, socket starvation, and context switching contention.**
 * **Test Improvement:** Decoupling client request arrival rates from downstream latency can be achieved in k6 using a `constant-arrival-rate` executor instead of VU-loop-based concurrency.
 
-## Status Dashboard UI & Local Testing
+## Observability & Chaos Control Plane UI
 
-A status dashboard is available at `http://localhost:9091/dashboard/` (or the `/dashboard/` path of your deployed domain).
+An enterprise-grade React 19 + Vite dashboard is available at `http://localhost:9091/dashboard/` (or port `:5173` during local frontend development).
 
-Features:
-* **Real-time Status**: Polls stats, upstreams, and circuit breakers.
-* **Chaos Injection**: Interactive sliders on each upstream card to inject custom error rates via `POST /chaos` on the fly and watch the circuit breaker transition from `Closed` ➔ `Open` ➔ `Half-Open` in real time.
+### Dashboard Highlights
+* **Real-Time Sparkline Telemetry**: Zero-dependency rolling SVG micro-charts tracking live throughput (`req/s`) and HTTP 429 rate-limiting rejection trends.
+* **Interactive Traffic & Rate Limit Simulator**: Fire synthetic bursts (1 to 100 concurrent requests) or continuous streams against `/api/v1/users` (Token Bucket) and `/api/v1/orders` (Sliding Window Log). Select tier keys (`free-key-001`, `pro-key-001`, `enterprise-key-001`, invalid keys) to observe live HTTP 200 vs 429 vs 503 vs 401 response breakdowns and RFC-6585 rate limit response headers (`X-RateLimit-Remaining`, `Retry-After`).
+* **Upstream Circuit Breaker Topology & Chaos**: Live monitoring of active in-flight connection counters, consecutive failures, and state machine transitions (`CLOSED` ➔ `HALF-OPEN` ➔ `OPEN`). Features interactive fault injection sliders and 1-click chaos presets (`0% Clean`, `25% Flaky`, `50% Loss`, `100% Trip`) targeting upstream mock instances.
+* **Gateway Configuration Inspector**: Live runtime view of registered routing rules, rate limit algorithms/refill rates, circuit breaker thresholds, and health check intervals fetched from `/admin/config`.
+* **Admin Token Auth & Offline Demo Mode**: Integrated Bearer token management for protected admin endpoints, plus a 1-click **Simulation Mode** that runs synthetic operational metrics and breaker state transitions for offline portfolio demonstrations.
 
 ## Oracle Cloud Deployment Prep
 
