@@ -25,7 +25,8 @@
 [Control Plane UI](#-observability--chaos-control-plane) •
 [Benchmarks](#-empirical-benchmarks--system-design-analysis) •
 [Quickstart](#-quickstart-guide) •
-[API Reference](#-api--admin-reference)
+[API Reference](#-api--admin-reference) •
+[Architecture FAQ](#-architectural-decisions--engineering-faq)
 
 ---
 
@@ -254,7 +255,7 @@ Accessible at `http://localhost:9091/dashboard/` (or port `:5173` in frontend de
 2. **SVG Sparkline Micro-Charts**: Zero-dependency rolling 25-point SVG graphs rendering live throughput ($\text{req/s}$) and 429 rejection patterns.
 3. **Runtime Chaos Fault Injection**: Sliders and quick presets (`0% Clean`, `25% Flaky`, `50% Loss`, `100% Trip`) directly dispatch `POST /chaos` payloads to mock upstreams, triggering real circuit breaker trips on the fly.
 4. **Admin Authentication**: Supports Bearer token authorization persisted in `localStorage` for secured admin endpoints.
-5. **Offline Simulation Mode**: 1-click toggle allowing recruiters and interviewers to explore the entire UI with realistic live-jitter data without starting Redis or backend services.
+5. **Standalone Simulation Mode**: 1-click toggle allowing operators to evaluate the full telemetry interface with realistic live-jitter simulation data without requiring backend services.
 
 ---
 
@@ -411,21 +412,19 @@ Flux-GO/
 
 ---
 
-## 🎯 System Design Interview Talking Points
+## 🧠 Architectural Decisions & Engineering FAQ
 
-Ready-to-use responses for Senior/Staff Backend & Distributed Systems interviews:
+### 1. How does Flux-GO eliminate concurrency races in distributed rate limiting without distributed locks?
+Distributed locks (e.g., Redlock) introduce network round-trips, lock contention overhead, and lease expiration edge cases. Flux-GO avoids locks completely by executing rate-limiting operations inside atomic, single-turn **Redis Lua scripts**. Because Redis evaluates Lua scripts sequentially on its main event thread, the entire read-modify-write cycle (evaluating current balance, calculating token replenishment based on elapsed time, and decrementing the quota) executes atomically across all gateway replicas in a single round-trip.
 
-1. **How do you avoid race conditions in distributed rate limiting?**
-   > *"We avoid distributed locks entirely by executing token updates inside single-turn Redis Lua scripts. Because Redis evaluates Lua scripts atomically on its main thread, the read-modify-write cycle of checking remaining tokens and decrementing them happens without interleaving from other gateway replicas."*
+### 2. Why use a Sliding Window Log instead of a Fixed Window counter?
+Fixed-window counters suffer from the **2x boundary burst anomaly**: a client can exhaust their entire quota in the final 5% of window $T$ and immediately exhaust another full quota in the initial 5% of window $T+1$, processing double the allowed traffic across the boundary. Flux-GO's Sliding Window Log stores request timestamps inside a Redis Sorted Set (`ZSET`). It executes `ZREMRANGEBYSCORE` to purge events older than `now - window` and counts exact elements via `ZCARD`, guaranteeing mathematical precision under heavy traffic bursts.
 
-2. **Why use Sliding Window Log over Fixed Window?**
-   > *"Fixed windows suffer from the $2\times$ boundary burst problem: a client can exhaust their quota in the last second of window 1 and the first second of window 2, effectively doubling their allowed rate. Our sliding window log uses a Redis `ZSET` scored by microsecond timestamps, trimming expired events with `ZREMRANGEBYSCORE` to measure precise request frequency."*
+### 3. How does the Circuit Breaker avoid flapping on transient network blips?
+Instead of tripping on an isolated timeout or transient network drop, Flux-GO enforces **state hysteresis counters**. An upstream must fail $N$ consecutive times (configurable, default: 5) to transition from `CLOSED` to `OPEN`. Once the cooldown timer elapses, the breaker enters `HALF-OPEN` and permits only a constrained quota of canary probe requests. Only when all canary probes succeed does the circuit safely close, preventing rapid state oscillation (flapping).
 
-3. **How does your circuit breaker handle transient network blips?**
-   > *"We employ state hysteresis counters rather than single-error triggers. An upstream must fail $N$ consecutive times (default: 5) to trip from `CLOSED` to `OPEN`. In `HALF-OPEN`, probe requests are bounded; only after $M$ consecutive canary successes does the breaker safely transition back to `CLOSED`."*
-
-4. **What happened when upstream latency was reduced to 0ms during your load test?**
-   > *"Tail latency (p99) worsened from 187ms to 537ms because downstream latency acted as an implicit client pacing mechanism. Removing it flooded the gateway with concurrent connections, causing context switching overhead and socket exhaustion. This demonstrates why ingress gateways require rate limiting and connection pooling regardless of backend speed."*
+### 4. What does the 0ms Upstream Latency benchmark reveal about client concurrency depth?
+During load testing, setting upstream latency to 0ms degraded tail latency (p99 increased from 187ms to 537ms). In distributed systems, downstream latency acts as an implicit pacing mechanism for closed-loop clients. Without pacing, client connection loops immediately saturate the gateway's socket queues and trigger CPU context switching thrashing. This empirically highlights why edge ingress gateways require proactive connection pooling and client-side token-bucket pacing regardless of how fast backend services respond.
 
 ---
 
