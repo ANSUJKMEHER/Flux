@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X } from 'lucide-react';
+import { Key, Lock, X, Check, Activity, Zap, Sliders } from 'lucide-react';
 import { getAdminToken, setAdminToken } from '../api';
 
 export default function AdminAuthBar({ isDemoMode, setIsDemoMode, connectionError, activeTab, setActiveTab }) {
@@ -26,67 +26,94 @@ export default function AdminAuthBar({ isDemoMode, setIsDemoMode, connectionErro
   const hasToken = !!getAdminToken();
 
   const navItems = [
-    { id: 'topology', label: 'TOPOLOGY' },
-    { id: 'traffic', label: 'TRAFFIC SIMULATOR' },
-    { id: 'config', label: 'GATEWAY CONFIG' },
+    { id: 'topology', label: 'Topology & Chaos', icon: Activity },
+    { id: 'traffic', label: 'Traffic Simulator', icon: Zap },
+    { id: 'config', label: 'Gateway Config', icon: Sliders },
   ];
 
   return (
-    <header className="narv-navbar">
-      <div className="narv-navbar-left">
-        {/* Segmented Terminal Nav Strip */}
-        <div className="narv-nav-strip">
-          <div className="narv-brand-block">
-            &lt;FLUX.GO&gt;
+    <header className="modern-navbar">
+      {/* Brand & Connection Tag */}
+      <div className="navbar-brand-section">
+        <div className="brand-pill">
+          <div className="brand-logo-mark">
+            <Zap size={15} className="brand-zap-icon" />
           </div>
-          {navItems.map((item) => {
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                className={`narv-nav-tab ${isActive ? 'narv-nav-tab-active' : ''}`}
-                onClick={() => setActiveTab(item.id)}
-              >
-                {item.label}
-              </button>
-            );
-          })}
+          <span className="brand-name">FLUX<span className="brand-dot">.GO</span></span>
+          <span className="brand-version-chip">v1.2</span>
         </div>
 
-        {/* Technical Status Tag */}
-        <div className="narv-status-tag font-mono">
-          <span className="text-orange">[SYS. 01]</span>
-          <span className="narv-status-sep">&gt;</span>
+        {/* Live Status Pill */}
+        <div className="telemetry-status-pill font-mono">
           {isDemoMode ? (
-            <span className="text-purple font-bold">SIMULATION_MODE</span>
+            <span className="status-indicator-demo">
+              <span className="pulse-dot dot-purple"></span>
+              SIMULATION MODE
+            </span>
           ) : connectionError ? (
-            <span className="text-rose font-bold">GATEWAY_DISCONNECTED</span>
+            <span className="status-indicator-offline">
+              <span className="pulse-dot dot-rose"></span>
+              GATEWAY OFFLINE
+            </span>
           ) : (
-            <span className="text-emerald font-bold">LIVE_TELEMETRY</span>
+            <span className="status-indicator-live">
+              <span className="pulse-dot dot-emerald"></span>
+              LIVE TELEMETRY
+            </span>
           )}
         </div>
       </div>
 
-      {/* Right Controls */}
-      <div className="narv-navbar-right">
-        {/* Demo Mode Pill */}
-        <button
-          type="button"
-          onClick={() => setIsDemoMode(!isDemoMode)}
-          className={`narv-btn-pill font-mono ${isDemoMode ? 'narv-btn-pill-active' : ''}`}
-        >
-          [ DEMO: {isDemoMode ? 'ON' : 'OFF'} ]
-        </button>
+      {/* Center: Segmented Navigation Pills */}
+      <nav className="navbar-nav-tabs">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={`nav-tab-item ${isActive ? 'nav-tab-item-active' : ''}`}
+              onClick={() => setActiveTab(item.id)}
+            >
+              <Icon size={14} className="nav-tab-icon" />
+              <span>{item.label}</span>
+              {isActive && (
+                <motion.div
+                  layoutId="tabGlow"
+                  className="nav-tab-active-indicator"
+                  transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                />
+              )}
+            </button>
+          );
+        })}
+      </nav>
 
-        {/* CTA Black Button with Orange Square */}
+      {/* Right Controls: Token Auth & Demo Switch */}
+      <div className="navbar-actions-section">
+        {/* Modern Toggle Switch for Demo Mode */}
+        <label className="toggle-switch-wrapper" title="Toggle simulation mode when gateway backend is offline">
+          <input
+            type="checkbox"
+            checked={isDemoMode}
+            onChange={(e) => setIsDemoMode(e.target.checked)}
+            className="toggle-checkbox"
+          />
+          <div className="toggle-slider"></div>
+          <span className="toggle-label font-mono">Simulation</span>
+        </label>
+
+        {/* Admin Token Button */}
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className="narv-btn-black"
+          type="button"
+          className={`btn-action-pill ${hasToken ? 'btn-action-pill-active' : ''}`}
           onClick={() => setShowTokenInput(!showTokenInput)}
         >
-          <span className="narv-square-indicator">■</span>
-          <span className="font-mono">{hasToken ? 'TOKEN ACTIVE' : 'ADMIN AUTH'}</span>
+          <Key size={13} />
+          <span>{hasToken ? 'Token Active' : 'Admin Auth'}</span>
         </motion.button>
       </div>
 
@@ -97,48 +124,64 @@ export default function AdminAuthBar({ isDemoMode, setIsDemoMode, connectionErro
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="narv-modal-backdrop"
+            className="modal-backdrop-clean"
             onClick={() => setShowTokenInput(false)}
           >
             <motion.div
-              initial={{ scale: 0.97, opacity: 0, y: 10 }}
+              initial={{ scale: 0.96, opacity: 0, y: 12 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.97, opacity: 0, y: 10 }}
+              exit={{ scale: 0.96, opacity: 0, y: 12 }}
               transition={{ duration: 0.2 }}
-              className="narv-modal-box"
+              className="modal-card-clean"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="narv-modal-top">
-                <div className="font-mono text-orange text-xs">[AUTH. 01] &gt; BEARER_TOKEN</div>
-                <button className="narv-modal-close" onClick={() => setShowTokenInput(false)}>
-                  <X size={14} />
+              <div className="modal-header-clean">
+                <div className="modal-title-left">
+                  <div className="modal-icon-square">
+                    <Lock size={15} />
+                  </div>
+                  <div>
+                    <h3 className="modal-heading">Admin API Authentication</h3>
+                    <p className="modal-subheading font-mono text-xs text-muted">
+                      Protected endpoints require Bearer authorization header
+                    </p>
+                  </div>
+                </div>
+                <button className="btn-modal-close-round" onClick={() => setShowTokenInput(false)}>
+                  <X size={15} />
                 </button>
               </div>
 
-              <h3 className="narv-modal-title">Admin API Authentication</h3>
-              <p className="narv-modal-desc font-mono">
-                When <code>admin.token</code> is configured in <code>gateway.yaml</code>, requests to <code>/admin/*</code> require <code>Authorization: Bearer &lt;token&gt;</code>.
-              </p>
+              <form onSubmit={handleSave} className="modal-form-clean">
+                <div className="form-group-clean">
+                  <label className="input-label-clean">Bearer Token</label>
+                  <input
+                    type="password"
+                    placeholder="Enter admin token (or leave empty if disabled)"
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    className="input-field-clean font-mono"
+                    autoFocus
+                  />
+                  <p className="input-hint-clean font-mono">
+                    Automatically sent to <code>/admin/*</code> and <code>/admin/config</code>.
+                  </p>
+                </div>
 
-              <form onSubmit={handleSave} className="narv-modal-form">
-                <input
-                  type="password"
-                  placeholder="Enter admin token (or leave empty if disabled)"
-                  value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                  className="narv-text-input font-mono"
-                  autoFocus
-                />
-
-                <div className="narv-modal-actions">
+                <div className="modal-footer-clean">
                   {hasToken && (
-                    <button type="button" className="narv-btn-subtle font-mono" onClick={handleClear}>
-                      CLEAR
+                    <button type="button" className="btn-clean-secondary font-mono" onClick={handleClear}>
+                      Remove Token
                     </button>
                   )}
-                  <button type="submit" className="narv-btn-black font-mono">
-                    <span className="narv-square-indicator">■</span>
-                    {savedSuccess ? 'SAVED' : 'SAVE TOKEN'}
+                  <button type="submit" className="btn-clean-primary">
+                    {savedSuccess ? (
+                      <span className="flex-center">
+                        <Check size={13} /> Saved
+                      </span>
+                    ) : (
+                      'Save Token'
+                    )}
                   </button>
                 </div>
               </form>

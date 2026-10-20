@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { AlertTriangle, RotateCcw, Sparkles, ExternalLink, Server } from 'lucide-react';
 import AdminAuthBar from './components/AdminAuthBar';
 import StatsBar from './components/StatsBar';
 import UpstreamCard from './components/UpstreamCard';
@@ -89,7 +90,7 @@ function App() {
 
   return (
     <div className="narv-app-wrapper">
-      {/* Top Terminal Strip Navigation */}
+      {/* Top Navbar with clear navigation tabs & controls */}
       <AdminAuthBar
         isDemoMode={isDemoMode}
         setIsDemoMode={setIsDemoMode}
@@ -99,21 +100,40 @@ function App() {
       />
 
       <main className="narv-main">
-        {/* Connection Notice */}
+        {/* Soft, friendly connection alert banner */}
         {connectionError && !isDemoMode && (
-          <div className="narv-notice-banner font-mono">
-            <span className="text-rose font-bold">[WARN. 01]</span>
-            <span>Gateway offline on :9091. Run <code>go run cmd/gateway/main.go</code> or enable</span>
-            <button className="narv-link-btn" onClick={() => setIsDemoMode(true)}>
-              [ SIMULATION MODE ]
-            </button>
-            <button className="narv-btn-black font-mono text-xs ml-auto" onClick={fetchState}>
-              [ RETRY ]
-            </button>
+          <div className="clean-alert-banner">
+            <div className="alert-content-left">
+              <AlertTriangle size={18} className="text-rose alert-icon" />
+              <div className="alert-text-block">
+                <span className="alert-title font-semibold">Gateway Offline (:9091)</span>
+                <span className="alert-desc text-muted">
+                  Cannot connect to the live gateway. Switch to Simulation Mode to explore real-time graphs, chaos injection, and rate limiting with synthetic traffic.
+                </span>
+              </div>
+            </div>
+            <div className="alert-actions-right">
+              <button
+                type="button"
+                className="btn-accent-sm font-medium"
+                onClick={() => setIsDemoMode(true)}
+              >
+                <Sparkles size={13} />
+                <span>Enable Simulation Mode</span>
+              </button>
+              <button
+                type="button"
+                className="btn-outline-sm font-mono"
+                onClick={fetchState}
+              >
+                <RotateCcw size={12} />
+                <span>Retry</span>
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Global KPI Metrics Section (The 4 Cards) */}
+        {/* Global Key Metrics Section */}
         <StatsBar stats={stats} upstreams={upstreams} />
 
         {/* Dynamic Tab Views */}
@@ -127,35 +147,41 @@ function App() {
               transition={{ duration: 0.2 }}
               className="narv-section"
             >
-              <div className="narv-hero-header">
-                <div className="narv-sub-tag font-mono">
-                  <span className="text-orange">[TOPO. 01 / 04]</span>
-                  <span className="narv-status-sep">&gt;</span>
-                  <span className="text-dark font-bold">UPSTREAM TOPOLOGY &amp; FAULT INJECTION</span>
+              <div className="section-hero-header">
+                <div>
+                  <div className="section-tag-row font-mono">
+                    <span className="tag-orange">[TOPO. 01 / 04]</span>
+                    <span className="tag-sep">&gt;</span>
+                    <span className="tag-text">UPSTREAM TOPOLOGY &amp; FAULT INJECTION</span>
+                  </div>
+
+                  <h2 className="section-main-heading">
+                    <span className="slash-accent">/ </span>
+                    <span className="text-black">Zero cascading failures.</span>{' '}
+                    <span className="text-muted-heading">Active load distribution and live fault induction.</span>
+                    <span className="slash-accent"> /</span>
+                  </h2>
                 </div>
 
-                <div className="narv-header-action-row">
-                  <h2 className="narv-slashed-heading">
-                    <span className="slash-token">/ </span>
-                    <span className="heading-bold">Zero cascading failures.</span>{' '}
-                    <span className="heading-muted">Active load distribution and live fault induction.</span>
-                    <span className="slash-token"> /</span>
-                  </h2>
-
-                  <div className="narv-header-btns font-mono text-xs text-muted">
-                    <span>{Object.keys(pools).length} POOLS // {upstreams.length} NODES</span>
-                  </div>
+                <div className="topology-badge-pill font-mono">
+                  <Server size={14} className="text-orange" />
+                  <span>{Object.keys(pools).length} POOLS</span>
+                  <span className="tag-sep">•</span>
+                  <span>{upstreams.length} NODES</span>
                 </div>
               </div>
 
               {Object.keys(pools).sort().map((poolName) => (
-                <div key={poolName} className="narv-pool-block">
-                  <div className="narv-pool-header font-mono">
-                    <span className="narv-pool-badge text-orange">&gt; POOL: {poolName.toUpperCase()}</span>
-                    <span className="text-muted text-xs">[{pools[poolName].length} INSTANCES]</span>
+                <div key={poolName} className="pool-block-card">
+                  <div className="pool-block-header font-mono">
+                    <div className="pool-title-group">
+                      <span className="pool-indicator-dot"></span>
+                      <span className="pool-name-label">POOL: {poolName.toUpperCase()}</span>
+                    </div>
+                    <span className="pool-size-badge">{pools[poolName].length} Instances</span>
                   </div>
 
-                  <div className="narv-nodes-grid">
+                  <div className="nodes-grid">
                     {pools[poolName].map((up) => (
                       <UpstreamCard
                         key={up.id}
@@ -169,9 +195,9 @@ function App() {
               ))}
 
               {Object.keys(pools).length === 0 && !connectionError && (
-                <div className="narv-box">
-                  <div className="narv-empty font-mono">
-                    [ No active pools registered in gateway.yaml ]
+                <div className="soft-empty-state">
+                  <div className="font-mono text-muted">
+                    No active pools registered in gateway.yaml
                   </div>
                 </div>
               )}
@@ -198,28 +224,29 @@ function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              <ConfigViewer />
+              <ConfigViewer isDemoMode={isDemoMode} />
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
-      {/* Terminal Minimalist Footer */}
-      <footer className="narv-footer font-mono">
-        <div className="narv-footer-left">
-          <span className="text-orange">■</span>
-          <span>FLUX-GO CONTROL PLANE</span>
-          <span className="text-muted">//</span>
-          <span className="text-muted">ATOMIC REDIS LUA &amp; KETAMA RING</span>
+      {/* Modern Footer */}
+      <footer className="modern-footer">
+        <div className="footer-left font-mono">
+          <span className="footer-dot-orange">■</span>
+          <span className="footer-title">FLUX-GO CONTROL PLANE</span>
+          <span className="footer-sep">//</span>
+          <span className="footer-subtitle">ATOMIC REDIS LUA &amp; KETAMA RING</span>
         </div>
-        <div className="narv-footer-right">
+        <div className="footer-right">
           <a
             href="https://github.com/ANSUJKMEHER/Flux"
             target="_blank"
             rel="noreferrer"
-            className="narv-footer-link"
+            className="footer-github-link"
           >
-            [ GITHUB REPOSITORY ↗ ]
+            <span>GitHub Repository</span>
+            <ExternalLink size={13} />
           </a>
         </div>
       </footer>
