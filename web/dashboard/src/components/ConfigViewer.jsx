@@ -19,7 +19,7 @@ export default function ConfigViewer({ isDemoMode }) {
     setLoading(true);
     try {
       const data = await fetchConfig();
-      if (data && (data.routes || data.pools || data.rate_limits)) {
+      if (data && (data.routes || data.Routes || data.pools || data.Pools || data.rate_limits || data.RateLimits)) {
         setConfig(data);
         setUsingFallback(false);
       } else {
@@ -28,7 +28,6 @@ export default function ConfigViewer({ isDemoMode }) {
       }
     } catch (e) {
       console.warn("Failed to fetch runtime config, using local schema:", e.message);
-      // Gracefully fall back to local config schema so the tab never breaks
       setConfig(DEMO_CONFIG);
       setUsingFallback(true);
     } finally {
@@ -41,7 +40,33 @@ export default function ConfigViewer({ isDemoMode }) {
   }, [loadConfig]);
 
   const activeConfig = config || DEMO_CONFIG;
-  const { routes = [], rate_limits = {}, breaker = {}, health = {}, pools = {} } = activeConfig;
+
+  // Defensive field resolution supporting both snake_case and PascalCase
+  const rawRoutes = activeConfig?.routes || activeConfig?.Routes || [];
+  const routes = Array.isArray(rawRoutes) ? rawRoutes : [];
+
+  const rawRateLimits = activeConfig?.rate_limits || activeConfig?.RateLimits || {};
+  const rateLimits = (rawRateLimits && typeof rawRateLimits === 'object') ? rawRateLimits : {};
+
+  const rawPools = activeConfig?.pools || activeConfig?.Pools || {};
+  const pools = (rawPools && typeof rawPools === 'object') ? rawPools : {};
+
+  const breaker = activeConfig?.breaker || activeConfig?.Breaker || {};
+  const health = activeConfig?.health || activeConfig?.Health || {};
+
+  // Formatted resilience values
+  const failureThreshold = breaker?.failure_threshold ?? breaker?.FailureThreshold ?? breaker?.consecutive_failures ?? 5;
+  let openTimeout = breaker?.open_timeout ?? breaker?.OpenTimeout ?? breaker?.timeout ?? '10s';
+  if (typeof openTimeout === 'number') {
+    openTimeout = `${openTimeout / 1e9}s`;
+  }
+  const canaryProbes = breaker?.success_threshold ?? breaker?.SuccessThreshold ?? breaker?.half_open_requests ?? 3;
+
+  let probeInterval = health?.interval ?? health?.Interval ?? '5s';
+  if (typeof probeInterval === 'number') {
+    probeInterval = `${probeInterval / 1e9}s`;
+  }
+  const probePath = health?.path || health?.Path || '/health';
 
   return (
     <section className="narv-section">
@@ -103,14 +128,27 @@ export default function ConfigViewer({ isDemoMode }) {
                 </tr>
               </thead>
               <tbody>
-                {routes.map((r, i) => (
-                  <tr key={i}>
-                    <td className="text-orange font-bold">{r.path_prefix}</td>
-                    <td><span className="pool-tag">{r.pool}</span></td>
-                    <td className="text-muted">{r.algorithm || 'tier-default'}</td>
-                    <td className="text-muted">{r.rate_limit_tier || 'auth-derived'}</td>
+                {routes.map((r, i) => {
+                  const prefix = r?.path_prefix || r?.PathPrefix || '/';
+                  const pool = r?.pool || r?.Pool || '-';
+                  const algo = r?.algorithm || r?.Algorithm || 'tier-default';
+                  const tier = r?.rate_limit_tier || r?.RateLimitTier || 'auth-derived';
+                  return (
+                    <tr key={i}>
+                      <td className="text-orange font-bold">{prefix}</td>
+                      <td><span className="pool-tag">{pool}</span></td>
+                      <td className="text-muted">{algo}</td>
+                      <td className="text-muted">{tier}</td>
+                    </tr>
+                  );
+                })}
+                {routes.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="text-muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                      No routes registered
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -124,7 +162,7 @@ export default function ConfigViewer({ isDemoMode }) {
           <div className="soft-card-header">
             <div className="card-title-with-icon">
               <Layers size={16} className="text-orange" />
-              <h3 className="soft-card-title">Rate Limiting Tiers ({Object.keys(rate_limits).length})</h3>
+              <h3 className="soft-card-title">Rate Limiting Tiers ({Object.keys(rateLimits).length})</h3>
             </div>
             <span className="badge-pill-orange font-mono">Atomic Redis Lua</span>
           </div>
@@ -141,15 +179,31 @@ export default function ConfigViewer({ isDemoMode }) {
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(rate_limits).map(([name, tier]) => (
-                  <tr key={name}>
-                    <td className="text-black font-bold">// {name.toUpperCase()}</td>
-                    <td>{tier.algorithm}</td>
-                    <td className="text-orange font-bold">{tier.rate} rps</td>
-                    <td className="text-black">{tier.burst}</td>
-                    <td className="text-muted">{tier.window || '-'}</td>
+                {Object.entries(rateLimits).map(([name, tier]) => {
+                  const algo = tier?.algorithm || tier?.Algorithm || '-';
+                  const rate = tier?.rate ?? tier?.Rate ?? '-';
+                  const burst = tier?.burst ?? tier?.Burst ?? '-';
+                  let windowVal = tier?.window || tier?.Window || '-';
+                  if (typeof windowVal === 'number') {
+                    windowVal = `${windowVal / 1e9}s`;
+                  }
+                  return (
+                    <tr key={name}>
+                      <td className="text-black font-bold">// {String(name).toUpperCase()}</td>
+                      <td>{algo}</td>
+                      <td className="text-orange font-bold">{rate} rps</td>
+                      <td className="text-black">{burst}</td>
+                      <td className="text-muted">{windowVal}</td>
+                    </tr>
+                  );
+                })}
+                {Object.keys(rateLimits).length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-muted" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                      No tiers defined
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -171,23 +225,23 @@ export default function ConfigViewer({ isDemoMode }) {
           <div className="soft-card-body font-mono">
             <div className="kv-row">
               <span className="kv-k">FAILURE_TRIP_THRESHOLD:</span>
-              <span className="kv-v text-orange font-bold">{breaker.consecutive_failures ?? 5} consecutive errors</span>
+              <span className="kv-v text-orange font-bold">{failureThreshold} consecutive errors</span>
             </div>
             <div className="kv-row">
               <span className="kv-k">COOLDOWN_TIMEOUT:</span>
-              <span className="kv-v">{breaker.timeout ?? '10s'} before half-open</span>
+              <span className="kv-v">{openTimeout} before half-open</span>
             </div>
             <div className="kv-row">
               <span className="kv-k">HALF_OPEN_CANARY_PROBES:</span>
-              <span className="kv-v">{breaker.half_open_requests ?? 3} probe requests</span>
+              <span className="kv-v">{canaryProbes} probe requests</span>
             </div>
             <div className="kv-row">
               <span className="kv-k">HEALTH_PROBE_INTERVAL:</span>
-              <span className="kv-v">{health.interval ?? '5s'}</span>
+              <span className="kv-v">{probeInterval}</span>
             </div>
             <div className="kv-row">
               <span className="kv-k">HEALTH_PROBE_PATH:</span>
-              <span className="kv-v">{health.path ?? '/health'}</span>
+              <span className="kv-v">{probePath}</span>
             </div>
           </div>
           <div className="soft-card-footer font-mono">
@@ -206,14 +260,25 @@ export default function ConfigViewer({ isDemoMode }) {
           </div>
 
           <div className="soft-card-body font-mono">
-            {Object.entries(pools).map(([poolName, poolCfg]) => (
-              <div key={poolName} className="kv-row">
-                <span className="text-black font-bold">// {poolName}</span>
-                <span className="text-orange font-bold">
-                  [{poolCfg.strategy.toUpperCase()}] ({poolCfg.upstreams?.length || 0} NODES)
-                </span>
+            {Object.entries(pools).map(([poolName, poolCfg]) => {
+              const rawStrategy = poolCfg?.strategy || poolCfg?.Strategy || 'round_robin';
+              const strategy = String(rawStrategy).toUpperCase();
+              const upstreamsList = poolCfg?.upstreams || poolCfg?.Upstreams || [];
+              const nodeCount = Array.isArray(upstreamsList) ? upstreamsList.length : 0;
+              return (
+                <div key={poolName} className="kv-row">
+                  <span className="text-black font-bold">// {poolName}</span>
+                  <span className="text-orange font-bold">
+                    [{strategy}] ({nodeCount} NODES)
+                  </span>
+                </div>
+              );
+            })}
+            {Object.keys(pools).length === 0 && (
+              <div className="text-muted" style={{ textAlign: 'center', padding: '1rem' }}>
+                No pools registered
               </div>
-            ))}
+            )}
           </div>
           <div className="soft-card-footer font-mono">
             KETAMA HASH RING // 150 VNODES

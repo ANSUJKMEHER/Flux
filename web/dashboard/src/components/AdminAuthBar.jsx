@@ -78,13 +78,6 @@ export default function AdminAuthBar({ isDemoMode, setIsDemoMode, connectionErro
             >
               <Icon size={14} className="nav-tab-icon" />
               <span>{item.label}</span>
-              {isActive && (
-                <motion.div
-                  layoutId="tabGlow"
-                  className="nav-tab-active-indicator"
-                  transition={{ type: 'spring', stiffness: 450, damping: 35 }}
-                />
-              )}
             </button>
           );
         })}

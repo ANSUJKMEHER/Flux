@@ -6,6 +6,7 @@ import StatsBar from './components/StatsBar';
 import UpstreamCard from './components/UpstreamCard';
 import TrafficGenerator from './components/TrafficGenerator';
 import ConfigViewer from './components/ConfigViewer';
+import ErrorBoundary from './components/ErrorBoundary';
 import { fetchUpstreams, fetchBreakers, fetchStats, getDemoMode, setDemoMode as persistDemoMode } from './api';
 import { DEMO_UPSTREAMS, DEMO_BREAKERS } from './demoData';
 
@@ -147,60 +148,62 @@ function App() {
               transition={{ duration: 0.2 }}
               className="narv-section"
             >
-              <div className="section-hero-header">
-                <div>
-                  <div className="section-tag-row font-mono">
-                    <span className="tag-orange">[TOPO. 01 / 04]</span>
-                    <span className="tag-sep">&gt;</span>
-                    <span className="tag-text">UPSTREAM TOPOLOGY &amp; FAULT INJECTION</span>
-                  </div>
-
-                  <h2 className="section-main-heading">
-                    <span className="slash-accent">/ </span>
-                    <span className="text-black">Zero cascading failures.</span>{' '}
-                    <span className="text-muted-heading">Active load distribution and live fault induction.</span>
-                    <span className="slash-accent"> /</span>
-                  </h2>
-                </div>
-
-                <div className="topology-badge-pill font-mono">
-                  <Server size={14} className="text-orange" />
-                  <span>{Object.keys(pools).length} POOLS</span>
-                  <span className="tag-sep">•</span>
-                  <span>{upstreams.length} NODES</span>
-                </div>
-              </div>
-
-              {Object.keys(pools).sort().map((poolName) => (
-                <div key={poolName} className="pool-block-card">
-                  <div className="pool-block-header font-mono">
-                    <div className="pool-title-group">
-                      <span className="pool-indicator-dot"></span>
-                      <span className="pool-name-label">POOL: {poolName.toUpperCase()}</span>
+              <ErrorBoundary title="Topology View Error" onReset={fetchState}>
+                <div className="section-hero-header">
+                  <div>
+                    <div className="section-tag-row font-mono">
+                      <span className="tag-orange">[TOPO. 01 / 04]</span>
+                      <span className="tag-sep">&gt;</span>
+                      <span className="tag-text">UPSTREAM TOPOLOGY &amp; FAULT INJECTION</span>
                     </div>
-                    <span className="pool-size-badge">{pools[poolName].length} Instances</span>
+
+                    <h2 className="section-main-heading">
+                      <span className="slash-accent">/ </span>
+                      <span className="text-black">Zero cascading failures.</span>{' '}
+                      <span className="text-muted-heading">Active load distribution and live fault induction.</span>
+                      <span className="slash-accent"> /</span>
+                    </h2>
                   </div>
 
-                  <div className="nodes-grid">
-                    {pools[poolName].map((up) => (
-                      <UpstreamCard
-                        key={up.id}
-                        upstream={up}
-                        breaker={cbMap[up.id] || cbMap[up.url]}
-                        onChaosApplied={fetchState}
-                      />
-                    ))}
+                  <div className="topology-badge-pill font-mono">
+                    <Server size={14} className="text-orange" />
+                    <span>{Object.keys(pools).length} POOLS</span>
+                    <span className="tag-sep">•</span>
+                    <span>{upstreams.length} NODES</span>
                   </div>
                 </div>
-              ))}
 
-              {Object.keys(pools).length === 0 && !connectionError && (
-                <div className="soft-empty-state">
-                  <div className="font-mono text-muted">
-                    No active pools registered in gateway.yaml
+                {Object.keys(pools).sort().map((poolName) => (
+                  <div key={poolName} className="pool-block-card">
+                    <div className="pool-block-header font-mono">
+                      <div className="pool-title-group">
+                        <span className="pool-indicator-dot"></span>
+                        <span className="pool-name-label">POOL: {poolName.toUpperCase()}</span>
+                      </div>
+                      <span className="pool-size-badge">{pools[poolName].length} Instances</span>
+                    </div>
+
+                    <div className="nodes-grid">
+                      {pools[poolName].map((up) => (
+                        <UpstreamCard
+                          key={up.id}
+                          upstream={up}
+                          breaker={cbMap[up.id] || cbMap[up.url]}
+                          onChaosApplied={fetchState}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                ))}
+
+                {Object.keys(pools).length === 0 && !connectionError && (
+                  <div className="soft-empty-state">
+                    <div className="font-mono text-muted">
+                      No active pools registered in gateway.yaml
+                    </div>
+                  </div>
+                )}
+              </ErrorBoundary>
             </motion.section>
           )}
 
@@ -212,7 +215,9 @@ function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              <TrafficGenerator onTrafficGenerated={fetchState} />
+              <ErrorBoundary title="Traffic Simulator Error">
+                <TrafficGenerator onTrafficGenerated={fetchState} />
+              </ErrorBoundary>
             </motion.div>
           )}
 
@@ -224,7 +229,9 @@ function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              <ConfigViewer isDemoMode={isDemoMode} />
+              <ErrorBoundary title="Gateway Configuration Error">
+                <ConfigViewer isDemoMode={isDemoMode} />
+              </ErrorBoundary>
             </motion.div>
           )}
         </AnimatePresence>

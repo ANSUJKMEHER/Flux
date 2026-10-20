@@ -11,103 +11,103 @@ import (
 
 // GatewayConfig is the top-level configuration for the API gateway.
 type GatewayConfig struct {
-	Server   ServerConfig              `yaml:"server"`
-	Admin    AdminConfig               `yaml:"admin"`
-	Redis    RedisConfig               `yaml:"redis"`
-	Auth     AuthConfig                `yaml:"auth"`
-	Routes   []RouteConfig             `yaml:"routes"`
-	Pools    map[string]UpstreamPool   `yaml:"pools"`
-	RateLimits map[string]RateLimitTier `yaml:"rate_limits"`
-	Breaker  BreakerConfig             `yaml:"breaker"`
-	Health   HealthConfig              `yaml:"health"`
+	Server     ServerConfig             `yaml:"server" json:"server"`
+	Admin      AdminConfig              `yaml:"admin" json:"admin"`
+	Redis      RedisConfig              `yaml:"redis" json:"redis"`
+	Auth       AuthConfig               `yaml:"auth" json:"auth"`
+	Routes     []RouteConfig            `yaml:"routes" json:"routes"`
+	Pools      map[string]UpstreamPool  `yaml:"pools" json:"pools"`
+	RateLimits map[string]RateLimitTier `yaml:"rate_limits" json:"rate_limits"`
+	Breaker    BreakerConfig            `yaml:"breaker" json:"breaker"`
+	Health     HealthConfig             `yaml:"health" json:"health"`
 }
 
 // ServerConfig holds the main listener settings.
 type ServerConfig struct {
-	ListenAddr     string        `yaml:"listen_addr"`
-	ReadTimeout    time.Duration `yaml:"read_timeout"`
-	WriteTimeout   time.Duration `yaml:"write_timeout"`
-	DrainTimeout   time.Duration `yaml:"drain_timeout"`
+	ListenAddr   string        `yaml:"listen_addr" json:"listen_addr"`
+	ReadTimeout  time.Duration `yaml:"read_timeout" json:"read_timeout"`
+	WriteTimeout time.Duration `yaml:"write_timeout" json:"write_timeout"`
+	DrainTimeout time.Duration `yaml:"drain_timeout" json:"drain_timeout"`
 }
 
 // AdminConfig holds the admin API listener settings.
 type AdminConfig struct {
-	ListenAddr     string   `yaml:"listen_addr"`
-	Enabled        bool     `yaml:"enabled"`
-	Token          string   `yaml:"token,omitempty"`           // Bearer token for admin authentication
-	AllowedOrigins []string `yaml:"allowed_origins,omitempty"` // Trusted CORS origins
+	ListenAddr     string   `yaml:"listen_addr" json:"listen_addr"`
+	Enabled        bool     `yaml:"enabled" json:"enabled"`
+	Token          string   `yaml:"token,omitempty" json:"token,omitempty"`           // Bearer token for admin authentication
+	AllowedOrigins []string `yaml:"allowed_origins,omitempty" json:"allowed_origins,omitempty"` // Trusted CORS origins
 }
 
 // RedisConfig holds the Redis connection settings.
 type RedisConfig struct {
-	Addr         string        `yaml:"addr"`
-	Password     string        `yaml:"password"`
-	DB           int           `yaml:"db"`
-	PoolSize     int           `yaml:"pool_size"`
-	MinIdleConns int           `yaml:"min_idle_conns"`
-	PoolTimeout  time.Duration `yaml:"pool_timeout"`
+	Addr         string        `yaml:"addr" json:"addr"`
+	Password     string        `yaml:"password" json:"password"`
+	DB           int           `yaml:"db" json:"db"`
+	PoolSize     int           `yaml:"pool_size" json:"pool_size"`
+	MinIdleConns int           `yaml:"min_idle_conns" json:"min_idle_conns"`
+	PoolTimeout  time.Duration `yaml:"pool_timeout" json:"pool_timeout"`
 }
 
 // AuthConfig holds authentication settings.
 type AuthConfig struct {
-	Mode    string            `yaml:"mode"` // "api_key" or "jwt"
-	APIKeys map[string]string `yaml:"api_keys"` // key -> tier name
-	JWT     JWTConfig         `yaml:"jwt"`
+	Mode    string            `yaml:"mode" json:"mode"` // "api_key" or "jwt"
+	APIKeys map[string]string `yaml:"api_keys" json:"api_keys"` // key -> tier name
+	JWT     JWTConfig         `yaml:"jwt" json:"jwt"`
 }
 
 // JWTConfig holds JWT-specific settings.
 type JWTConfig struct {
-	Secret    string `yaml:"secret"`
-	TierClaim string `yaml:"tier_claim"` // JWT claim field for tier
-	Issuer    string `yaml:"issuer"`
+	Secret    string `yaml:"secret" json:"secret"`
+	TierClaim string `yaml:"tier_claim" json:"tier_claim"` // JWT claim field for tier
+	Issuer    string `yaml:"issuer" json:"issuer"`
 }
 
 // RouteConfig defines a single routing rule.
 type RouteConfig struct {
-	PathPrefix    string   `yaml:"path_prefix"`
-	Host          string   `yaml:"host,omitempty"`
-	StripPrefix   bool     `yaml:"strip_prefix"`
-	Pool          string   `yaml:"pool"`             // upstream pool name
-	RateLimitTier string   `yaml:"rate_limit_tier"` // overrides auth-derived tier if set
-	Algorithm     string   `yaml:"algorithm,omitempty"` // "token_bucket" or "sliding_window"
-	AuthRequired  bool     `yaml:"auth_required"`
-	AllowedTiers  []string `yaml:"allowed_tiers,omitempty"`
+	PathPrefix    string   `yaml:"path_prefix" json:"path_prefix"`
+	Host          string   `yaml:"host,omitempty" json:"host,omitempty"`
+	StripPrefix   bool     `yaml:"strip_prefix" json:"strip_prefix"`
+	Pool          string   `yaml:"pool" json:"pool"`             // upstream pool name
+	RateLimitTier string   `yaml:"rate_limit_tier" json:"rate_limit_tier"` // overrides auth-derived tier if set
+	Algorithm     string   `yaml:"algorithm,omitempty" json:"algorithm,omitempty"` // "token_bucket" or "sliding_window"
+	AuthRequired  bool     `yaml:"auth_required" json:"auth_required"`
+	AllowedTiers  []string `yaml:"allowed_tiers,omitempty" json:"allowed_tiers,omitempty"`
 }
 
 // UpstreamPool defines a named group of upstream service instances.
 type UpstreamPool struct {
-	Strategy  string           `yaml:"strategy"` // "round_robin", "least_conn", "weighted", "power_of_two"
-	Upstreams []UpstreamConfig `yaml:"upstreams"`
+	Strategy  string           `yaml:"strategy" json:"strategy"` // "round_robin", "least_conn", "weighted", "power_of_two"
+	Upstreams []UpstreamConfig `yaml:"upstreams" json:"upstreams"`
 }
 
 // UpstreamConfig defines a single upstream instance.
 type UpstreamConfig struct {
-	ID     string `yaml:"id"`
-	URL    string `yaml:"url"`
-	Weight int    `yaml:"weight"`
+	ID     string `yaml:"id" json:"id"`
+	URL    string `yaml:"url" json:"url"`
+	Weight int    `yaml:"weight" json:"weight"`
 }
 
 // RateLimitTier defines rate limit parameters for a named tier.
 type RateLimitTier struct {
-	Algorithm  string `yaml:"algorithm"` // "token_bucket" or "sliding_window"
-	Rate       int    `yaml:"rate"`       // tokens per second (token bucket) or max requests (sliding window)
-	Burst      int    `yaml:"burst"`      // max bucket size (token bucket only)
-	Window     time.Duration `yaml:"window"` // window size (sliding window only)
+	Algorithm string        `yaml:"algorithm" json:"algorithm"` // "token_bucket" or "sliding_window"
+	Rate      int           `yaml:"rate" json:"rate"`       // tokens per second (token bucket) or max requests (sliding window)
+	Burst     int           `yaml:"burst" json:"burst"`      // max bucket size (token bucket only)
+	Window    time.Duration `yaml:"window" json:"window"` // window size (sliding window only)
 }
 
 // BreakerConfig holds circuit breaker settings (applied per upstream).
 type BreakerConfig struct {
-	FailureThreshold int           `yaml:"failure_threshold"` // consecutive failures to trip
-	SuccessThreshold int           `yaml:"success_threshold"` // successes in half-open to close
-	OpenTimeout      time.Duration `yaml:"open_timeout"`      // duration before transitioning to half-open
+	FailureThreshold int           `yaml:"failure_threshold" json:"failure_threshold"` // consecutive failures to trip
+	SuccessThreshold int           `yaml:"success_threshold" json:"success_threshold"` // successes in half-open to close
+	OpenTimeout      time.Duration `yaml:"open_timeout" json:"open_timeout"`      // duration before transitioning to half-open
 }
 
 // HealthConfig holds health checker settings.
 type HealthConfig struct {
-	Interval    time.Duration `yaml:"interval"`     // how often to check
-	Timeout     time.Duration `yaml:"timeout"`      // per-check timeout
-	Path        string        `yaml:"path"`         // HTTP path to check
-	Threshold   int           `yaml:"threshold"`    // consecutive failures to mark unhealthy
+	Interval  time.Duration `yaml:"interval" json:"interval"`     // how often to check
+	Timeout   time.Duration `yaml:"timeout" json:"timeout"`      // per-check timeout
+	Path      string        `yaml:"path" json:"path"`         // HTTP path to check
+	Threshold int           `yaml:"threshold" json:"threshold"`    // consecutive failures to mark unhealthy
 }
 
 // ParseYAML parses and validates raw YAML configuration bytes.
