@@ -39,6 +39,51 @@ function App() {
     cbMap[b.upstream] = b;
   });
 
+  // Dynamic chaos reaction for both demo mode and live gateway
+  const handleChaosApplied = (upstreamId, errorRate) => {
+    if (isDemoMode) {
+      setBreakers((prev) =>
+        prev.map((b) => {
+          if (b.upstream === upstreamId) {
+            if (errorRate >= 0.8) {
+              return {
+                ...b,
+                state: 'open',
+                stats: {
+                  ...b.stats,
+                  consecutive_failures: 5,
+                  failures: (b.stats?.failures || 0) + 5,
+                },
+              };
+            } else if (errorRate > 0) {
+              return {
+                ...b,
+                state: 'half-open',
+                stats: {
+                  ...b.stats,
+                  consecutive_failures: 2,
+                },
+              };
+            } else {
+              return {
+                ...b,
+                state: 'closed',
+                stats: {
+                  ...b.stats,
+                  consecutive_failures: 0,
+                  successes: (b.stats?.successes || 0) + 10,
+                },
+              };
+            }
+          }
+          return b;
+        })
+      );
+    } else {
+      fetchState();
+    }
+  };
+
   // Polling logic for real backend
   const fetchState = React.useCallback(async () => {
     if (isDemoMode) return;
@@ -189,7 +234,7 @@ function App() {
                           key={up.id}
                           upstream={up}
                           breaker={cbMap[up.id] || cbMap[up.url]}
-                          onChaosApplied={fetchState}
+                          onChaosApplied={(errorRate) => handleChaosApplied(up.id, errorRate)}
                         />
                       ))}
                     </div>

@@ -16,7 +16,7 @@ export default function UpstreamCard({ upstream, breaker, onChaosApplied }) {
     try {
       await injectChaos(upstream, errorRate);
       setChaosStatus({ type: 'success', msg: `Fault injected: ${valueToApply}% error rate applied.` });
-      if (onChaosApplied) onChaosApplied();
+      if (onChaosApplied) onChaosApplied(errorRate);
     } catch (e) {
       console.warn("Chaos injection failed (mockservice may not be running locally):", e.message);
       setChaosStatus({ type: 'warn', msg: `Endpoint unreachable: ${e.message}` });

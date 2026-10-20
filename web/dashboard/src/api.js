@@ -79,6 +79,10 @@ export async function fetchConfig() {
 }
 
 export async function injectChaos(upstream, errorRate) {
+  if (getDemoMode()) {
+    return { status: 'ok', upstream: upstream.id, error_rate: errorRate };
+  }
+
   // Map upstream ID or URL to appropriate chaos target
   let targetUrl = `/chaos/${upstream.id.replace(/users-|orders-|products-/, 'mock-')}`;
   const port = window.location.port;
@@ -125,7 +129,85 @@ export async function injectChaos(upstream, errorRate) {
   return res.json();
 }
 
+let simulatedFreeTokens = 20;
+let lastRefillTime = Date.now();
+
 export async function sendTrafficRequest(endpoint, apiKey) {
+  if (getDemoMode()) {
+    // Realistic microsecond latency simulation
+    await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 8) + 2));
+
+    const now = Date.now();
+    const elapsedSec = (now - lastRefillTime) / 1000;
+    lastRefillTime = now;
+    simulatedFreeTokens = Math.min(20, simulatedFreeTokens + elapsedSec * 10);
+
+    // Invalid API key
+    if (apiKey === 'invalid-token-demo') {
+      return {
+        timestamp: new Date().toLocaleTimeString(),
+        endpoint,
+        status: 401,
+        statusText: 'Unauthorized',
+        duration: Math.floor(Math.random() * 4) + 1,
+        rateLimitHeaders: {
+          'x-ratelimit-limit': '0',
+          'x-ratelimit-remaining': '0',
+        },
+        body: { error: 'invalid or missing API key' },
+      };
+    }
+
+    // Free Tier rate limiting simulation (Token Bucket)
+    if (apiKey === 'free-key-001') {
+      if (simulatedFreeTokens >= 1) {
+        simulatedFreeTokens -= 1;
+        return {
+          timestamp: new Date().toLocaleTimeString(),
+          endpoint,
+          status: 200,
+          statusText: 'OK',
+          duration: Math.floor(Math.random() * 6) + 2,
+          rateLimitHeaders: {
+            'x-ratelimit-limit': '10',
+            'x-ratelimit-remaining': String(Math.floor(simulatedFreeTokens)),
+            'x-ratelimit-reset': '1',
+          },
+          body: { status: 'success', data: 'Users payload' },
+        };
+      } else {
+        return {
+          timestamp: new Date().toLocaleTimeString(),
+          endpoint,
+          status: 429,
+          statusText: 'Too Many Requests',
+          duration: Math.floor(Math.random() * 3) + 1,
+          rateLimitHeaders: {
+            'x-ratelimit-limit': '10',
+            'x-ratelimit-remaining': '0',
+            'retry-after': '1',
+          },
+          body: { error: 'rate limit exceeded', retry_after: '1s' },
+        };
+      }
+    }
+
+    // Pro / Enterprise / Anonymous Tier
+    const limit = apiKey === 'enterprise-key-001' ? '1000' : apiKey === 'pro-key-001' ? '100' : '10';
+    return {
+      timestamp: new Date().toLocaleTimeString(),
+      endpoint,
+      status: 200,
+      statusText: 'OK',
+      duration: Math.floor(Math.random() * 5) + 2,
+      rateLimitHeaders: {
+        'x-ratelimit-limit': limit,
+        'x-ratelimit-remaining': String(Math.max(0, parseInt(limit, 10) - Math.floor(Math.random() * 15))),
+      },
+      body: { status: 'success', tier: apiKey ? 'authenticated' : 'anonymous' },
+    };
+  }
+
   const base = getGatewayBaseUrl();
   const url = `${base}${endpoint}`;
   const headers = {};
