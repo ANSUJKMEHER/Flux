@@ -1,4 +1,17 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Zap, 
+  Activity, 
+  ShieldCheck, 
+  ShieldAlert, 
+  Key, 
+  Settings, 
+  Radio, 
+  X, 
+  Check, 
+  Lock 
+} from 'lucide-react';
 import { getAdminToken, setAdminToken } from '../api';
 
 export default function AdminAuthBar({ isDemoMode, setIsDemoMode, connectionError, activeTab, setActiveTab }) {
@@ -23,112 +36,175 @@ export default function AdminAuthBar({ isDemoMode, setIsDemoMode, connectionErro
 
   const hasToken = !!getAdminToken();
 
+  const navItems = [
+    { id: 'topology', label: 'Topology & Chaos', icon: Activity },
+    { id: 'traffic', label: 'Traffic Simulator', icon: Zap },
+    { id: 'config', label: 'Gateway Config', icon: Settings },
+  ];
+
   return (
     <header className="navbar-container">
+      {/* Brand & Connection Pill */}
       <div className="navbar-left">
-        <div className="brand-logo">
-          <span className="brand-icon">⚡</span>
-          <span className="brand-text">FLUX<span className="brand-highlight">.GO</span></span>
+        <div className="brand-badge">
+          <div className="brand-icon-box">
+            <Zap className="brand-icon-svg" size={18} />
+          </div>
+          <div className="brand-text-group">
+            <span className="brand-title">FLUX<span className="brand-accent">.GO</span></span>
+            <span className="brand-tag">v1.2 Control Plane</span>
+          </div>
         </div>
-        <span className="brand-version">v1.2 Control Plane</span>
 
-        {/* Live / Demo Status Indicator */}
-        <div className="connection-badge-wrapper">
+        {/* Status Indicator */}
+        <div className="status-pill-wrapper">
           {isDemoMode ? (
-            <span className="badge-demo" title="Displaying simulated metrics for offline evaluation">
-              <span className="demo-dot"></span> SIMULATION MODE
+            <span className="status-pill-demo">
+              <span className="pulsing-dot dot-demo"></span>
+              <Radio size={12} className="status-inline-icon" />
+              SIMULATION MODE
             </span>
           ) : connectionError ? (
-            <span className="badge-disconnected" title="Gateway unreachable on localhost:9091">
-              <span className="disc-dot"></span> GATEWAY OFFLINE
+            <span className="status-pill-offline">
+              <span className="pulsing-dot dot-offline"></span>
+              <ShieldAlert size={12} className="status-inline-icon" />
+              GATEWAY DISCONNECTED
             </span>
           ) : (
-            <span className="badge-live" title="Active polling against /admin API">
-              <span className="live-dot"></span> LIVE TELEMETRY
+            <span className="status-pill-live">
+              <span className="pulsing-dot dot-live"></span>
+              <ShieldCheck size={12} className="status-inline-icon" />
+              LIVE TELEMETRY
             </span>
           )}
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <nav className="navbar-nav">
-        <button
-          className={`nav-tab ${activeTab === 'topology' ? 'nav-tab-active' : ''}`}
-          onClick={() => setActiveTab('topology')}
-        >
-          Topology & Chaos
-        </button>
-        <button
-          className={`nav-tab ${activeTab === 'traffic' ? 'nav-tab-active' : ''}`}
-          onClick={() => setActiveTab('traffic')}
-        >
-          Traffic Simulator
-        </button>
-        <button
-          className={`nav-tab ${activeTab === 'config' ? 'nav-tab-active' : ''}`}
-          onClick={() => setActiveTab('config')}
-        >
-          Gateway Config
-        </button>
+      {/* Modern Segmented Navigation Tabs */}
+      <nav className="navbar-tabs">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              className={`nav-tab-btn ${isActive ? 'nav-tab-btn-active' : ''}`}
+              onClick={() => setActiveTab(item.id)}
+            >
+              <Icon size={15} className="tab-icon" />
+              <span>{item.label}</span>
+              {isActive && (
+                <motion.div
+                  layoutId="activeTabGlow"
+                  className="nav-tab-indicator"
+                  transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                />
+              )}
+            </button>
+          );
+        })}
       </nav>
 
-      {/* Right Controls: Token Auth & Demo Switcher */}
+      {/* Right Controls: Auth & Demo Switch */}
       <div className="navbar-right">
-        <button
-          className={`btn-auth-toggle ${hasToken ? 'token-active' : ''}`}
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
+          className={`btn-auth-chip ${hasToken ? 'auth-chip-active' : ''}`}
           onClick={() => setShowTokenInput(!showTokenInput)}
-          title="Configure Admin Bearer Token for protected /admin endpoints"
         >
-          <span className="key-icon">🔑</span>
-          {hasToken ? 'Admin Token Active' : 'Admin Auth'}
-        </button>
+          <Key size={14} />
+          <span>{hasToken ? 'Token Active' : 'Admin Auth'}</span>
+        </motion.button>
 
-        <label className="demo-toggle-label" title="Toggle simulation mode when gateway is not running">
+        <label className="demo-switch-label" title="Toggle simulation mode when gateway is offline">
           <input
             type="checkbox"
             checked={isDemoMode}
             onChange={(e) => setIsDemoMode(e.target.checked)}
+            className="demo-switch-input"
           />
-          <span className="toggle-text">Demo Mode</span>
+          <span className="demo-switch-track">
+            <span className="demo-switch-thumb"></span>
+          </span>
+          <span className="demo-switch-text">Demo Mode</span>
         </label>
       </div>
 
-      {/* Auth Token Drawer / Dropdown */}
-      {showTokenInput && (
-        <div className="token-modal-overlay" onClick={() => setShowTokenInput(false)}>
-          <div className="token-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="token-modal-header">
-              <h3>Admin Bearer Authentication</h3>
-              <button className="btn-close" onClick={() => setShowTokenInput(false)}>✕</button>
-            </div>
-            <p className="token-modal-desc">
-              When <code>admin.token</code> is configured in <code>configs/gateway.yaml</code>, requests to <code>/admin/*</code> require an <code>Authorization: Bearer &lt;token&gt;</code> header.
-            </p>
-            <form onSubmit={handleSave}>
-              <div className="token-input-group">
-                <input
-                  type="password"
-                  placeholder="Enter admin token (or leave empty if disabled)"
-                  value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                  className="token-input"
-                  autoFocus
-                />
-              </div>
-              <div className="token-modal-actions">
-                {hasToken && (
-                  <button type="button" className="btn-secondary" onClick={handleClear}>
-                    Remove Token
-                  </button>
-                )}
-                <button type="submit" className="btn-primary">
-                  {savedSuccess ? 'Saved!' : 'Save Token'}
+      {/* Animated Auth Token Modal */}
+      <AnimatePresence>
+        {showTokenInput && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="token-modal-backdrop"
+            onClick={() => setShowTokenInput(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              transition={{ type: 'spring', duration: 0.3 }}
+              className="token-modal-card"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="token-modal-header">
+                <div className="modal-title-box">
+                  <div className="modal-icon-badge">
+                    <Lock size={16} />
+                  </div>
+                  <div>
+                    <h3 className="modal-title">Admin Bearer Authentication</h3>
+                    <p className="modal-subtitle">Configure authorization token for protected /admin endpoints</p>
+                  </div>
+                </div>
+                <button className="btn-modal-close" onClick={() => setShowTokenInput(false)}>
+                  <X size={16} />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+
+              <form onSubmit={handleSave} className="token-modal-form">
+                <div className="form-input-group">
+                  <label className="form-label">Bearer Token</label>
+                  <input
+                    type="password"
+                    placeholder="Enter admin token (or leave empty if disabled)"
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    className="form-text-input"
+                    autoFocus
+                  />
+                  <span className="form-help">
+                    Sent as <code>Authorization: Bearer &lt;token&gt;</code> to the gateway control plane.
+                  </span>
+                </div>
+
+                <div className="token-modal-footer">
+                  {hasToken && (
+                    <button type="button" className="btn-light-secondary" onClick={handleClear}>
+                      Clear Token
+                    </button>
+                  )}
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    type="submit"
+                    className="btn-light-primary"
+                  >
+                    {savedSuccess ? (
+                      <span className="flex-center">
+                        <Check size={14} /> Saved
+                      </span>
+                    ) : (
+                      'Save Token'
+                    )}
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }

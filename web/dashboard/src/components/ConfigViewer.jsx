@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
+import { Settings, RefreshCw, Route, Shield, Layers, Server } from 'lucide-react';
 import { fetchConfig } from '../api';
 
 export default function ConfigViewer() {
@@ -25,18 +27,21 @@ export default function ConfigViewer() {
 
   if (loading) {
     return (
-      <div className="config-panel">
-        <div className="empty-hint">Loading gateway configuration from `/admin/config`...</div>
+      <div className="surface-card">
+        <div className="empty-studio-box">
+          <RefreshCw size={24} className="spin-icon text-indigo" />
+          <p>Fetching sanitized gateway configuration from <code>/admin/config</code>...</p>
+        </div>
       </div>
     );
   }
 
   if (error || !config) {
     return (
-      <div className="config-panel">
-        <div className="banner-warn">
-          <span>Failed to load configuration: {error || 'No data'}</span>
-          <button className="btn-secondary" onClick={loadConfig} style={{ marginLeft: '1rem' }}>
+      <div className="surface-card">
+        <div className="banner-alert-box">
+          <p>Unable to load configuration: {error || 'No data returned'}</p>
+          <button className="btn-light-secondary" onClick={loadConfig}>
             Retry
           </button>
         </div>
@@ -47,40 +52,59 @@ export default function ConfigViewer() {
   const { routes = [], rate_limits = {}, breaker = {}, health = {}, pools = {} } = config;
 
   return (
-    <div className="config-panel">
-      <div className="config-header">
+    <div className="config-inspector-container">
+      {/* Header */}
+      <div className="studio-header">
         <div>
-          <h2 className="section-title">Gateway Configuration Inspector</h2>
-          <p className="section-subtitle">
-            Sanitized live configuration from <code>/admin/config</code>. All sensitive credentials and secrets are automatically redacted by the admin control plane.
+          <div className="studio-title-row">
+            <div className="studio-icon-box">
+              <Settings size={18} />
+            </div>
+            <h2 className="studio-title">Gateway Configuration Inspector</h2>
+          </div>
+          <p className="studio-desc">
+            Sanitized live configuration from <code>/admin/config</code>. All sensitive credentials, tokens, and internal keys are automatically redacted by the admin control plane.
           </p>
         </div>
-        <button className="btn-secondary" onClick={loadConfig}>
-          Refresh Config
-        </button>
+
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className="btn-light-secondary"
+          onClick={loadConfig}
+        >
+          <RefreshCw size={14} /> Refresh Configuration
+        </motion.button>
       </div>
 
-      <div className="config-grid">
+      <div className="config-cards-grid">
         {/* Routing Rules */}
-        <div className="config-card">
-          <h3 className="config-card-title">Routing Rules ({routes.length})</h3>
-          <div className="table-responsive">
-            <table className="config-table">
+        <div className="surface-card">
+          <div className="surface-card-header">
+            <div className="card-title-group">
+              <Route size={16} className="text-indigo" />
+              <h3 className="card-title">Routing Rules ({routes.length})</h3>
+            </div>
+            <span className="badge-soft-blue">First-Match Wins</span>
+          </div>
+
+          <div className="table-wrapper">
+            <table className="clean-table">
               <thead>
                 <tr>
                   <th>Path Prefix</th>
-                  <th>Pool Target</th>
-                  <th>Algorithm Override</th>
+                  <th>Target Pool</th>
+                  <th>Algorithm</th>
                   <th>Tier Override</th>
                 </tr>
               </thead>
               <tbody>
                 {routes.map((r, i) => (
                   <tr key={i}>
-                    <td className="font-mono text-cyan">{r.path_prefix}</td>
-                    <td><span className="badge-pool">{r.pool}</span></td>
-                    <td className="font-mono">{r.algorithm || 'tier-default'}</td>
-                    <td>{r.rate_limit_tier || 'auth-derived'}</td>
+                    <td className="font-mono text-indigo font-bold">{r.path_prefix}</td>
+                    <td><span className="pool-chip">{r.pool}</span></td>
+                    <td className="font-mono text-slate">{r.algorithm || 'tier-default'}</td>
+                    <td><span className="badge-soft-neutral">{r.rate_limit_tier || 'auth-derived'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -89,15 +113,22 @@ export default function ConfigViewer() {
         </div>
 
         {/* Rate Limiting Tiers */}
-        <div className="config-card">
-          <h3 className="config-card-title">Rate Limiting Tiers ({Object.keys(rate_limits).length})</h3>
-          <div className="table-responsive">
-            <table className="config-table">
+        <div className="surface-card">
+          <div className="surface-card-header">
+            <div className="card-title-group">
+              <Layers size={16} className="text-indigo" />
+              <h3 className="card-title">Rate Limiting Tiers ({Object.keys(rate_limits).length})</h3>
+            </div>
+            <span className="badge-soft-emerald">Atomic Redis Lua</span>
+          </div>
+
+          <div className="table-wrapper">
+            <table className="clean-table">
               <thead>
                 <tr>
-                  <th>Tier Name</th>
+                  <th>Tier</th>
                   <th>Algorithm</th>
-                  <th>Rate (Refill)</th>
+                  <th>Refill Rate</th>
                   <th>Burst Capacity</th>
                   <th>Window</th>
                 </tr>
@@ -105,11 +136,11 @@ export default function ConfigViewer() {
               <tbody>
                 {Object.entries(rate_limits).map(([name, tier]) => (
                   <tr key={name}>
-                    <td className="font-bold text-accent">{name.toUpperCase()}</td>
-                    <td className="font-mono">{tier.algorithm}</td>
-                    <td><span className="font-mono">{tier.rate}</span> tokens/s</td>
-                    <td><span className="font-mono">{tier.burst}</span> burst</td>
-                    <td>{tier.window || '-'}</td>
+                    <td className="font-bold text-slate-dark">{name.toUpperCase()}</td>
+                    <td className="font-mono text-slate">{tier.algorithm}</td>
+                    <td className="font-mono font-bold text-indigo">{tier.rate} <span className="table-unit">tokens/s</span></td>
+                    <td className="font-mono">{tier.burst} <span className="table-unit">burst</span></td>
+                    <td className="text-slate">{tier.window || 'continuous'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -117,43 +148,56 @@ export default function ConfigViewer() {
           </div>
         </div>
 
-        {/* Circuit Breaker & Health Monitoring */}
-        <div className="config-card">
-          <h3 className="config-card-title">Resilience & Health Settings</h3>
-          <div className="meta-list">
-            <div className="meta-item">
-              <span className="meta-label">Breaker Consecutive Failures:</span>
-              <span className="meta-val font-mono">{breaker.consecutive_failures ?? 5}</span>
+        {/* Resilience & Health Settings */}
+        <div className="surface-card">
+          <div className="surface-card-header">
+            <div className="card-title-group">
+              <Shield size={16} className="text-indigo" />
+              <h3 className="card-title">Resilience & Circuit Breaker Settings</h3>
             </div>
-            <div className="meta-item">
-              <span className="meta-label">Breaker Trip Timeout:</span>
-              <span className="meta-val font-mono">{breaker.timeout ?? '10s'}</span>
+          </div>
+
+          <div className="meta-key-value-list">
+            <div className="meta-kv-item">
+              <span className="kv-label">Failure Trip Threshold</span>
+              <span className="kv-val font-mono">{breaker.consecutive_failures ?? 5} consecutive errors</span>
             </div>
-            <div className="meta-item">
-              <span className="meta-label">Half-Open Canary Requests:</span>
-              <span className="meta-val font-mono">{breaker.half_open_requests ?? 3}</span>
+            <div className="meta-kv-item">
+              <span className="kv-label">Breaker Cooldown Duration</span>
+              <span className="kv-val font-mono">{breaker.timeout ?? '10s'}</span>
             </div>
-            <div className="meta-item">
-              <span className="meta-label">Health Check Interval:</span>
-              <span className="meta-val font-mono">{health.interval ?? '5s'}</span>
+            <div className="meta-kv-item">
+              <span className="kv-label">Half-Open Canary Quota</span>
+              <span className="kv-val font-mono">{breaker.half_open_requests ?? 3} probes</span>
             </div>
-            <div className="meta-item">
-              <span className="meta-label">Health Check Path:</span>
-              <span className="meta-val font-mono">{health.path ?? '/health'}</span>
+            <div className="meta-kv-item">
+              <span className="kv-label">Active Health Probe Interval</span>
+              <span className="kv-val font-mono">{health.interval ?? '5s'}</span>
+            </div>
+            <div className="meta-kv-item">
+              <span className="kv-label">Health Check HTTP Path</span>
+              <span className="kv-val font-mono">{health.path ?? '/health'}</span>
             </div>
           </div>
         </div>
 
         {/* Upstream Pools */}
-        <div className="config-card">
-          <h3 className="config-card-title">Upstream Pools ({Object.keys(pools).length})</h3>
-          <div className="meta-list">
+        <div className="surface-card">
+          <div className="surface-card-header">
+            <div className="card-title-group">
+              <Server size={16} className="text-indigo" />
+              <h3 className="card-title">Registered Upstream Pools ({Object.keys(pools).length})</h3>
+            </div>
+          </div>
+
+          <div className="meta-key-value-list">
             {Object.entries(pools).map(([poolName, poolCfg]) => (
-              <div key={poolName} className="meta-item">
-                <span className="meta-label font-bold">{poolName}:</span>
-                <span className="meta-val">
-                  Strategy: <code className="text-cyan">{poolCfg.strategy}</code> | Targets: {poolCfg.upstreams?.length || 0}
-                </span>
+              <div key={poolName} className="meta-kv-item">
+                <div>
+                  <span className="font-bold text-slate-dark">{poolName}</span>
+                  <span className="pool-sub-label"> ({poolCfg.upstreams?.length || 0} instances)</span>
+                </div>
+                <span className="badge-soft-blue font-mono">Strategy: {poolCfg.strategy}</span>
               </div>
             ))}
           </div>

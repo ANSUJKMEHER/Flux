@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Layers, AlertTriangle, Server, ArrowRight, ShieldCheck } from 'lucide-react';
 import AdminAuthBar from './components/AdminAuthBar';
 import StatsBar from './components/StatsBar';
 import UpstreamCard from './components/UpstreamCard';
@@ -64,7 +66,6 @@ function App() {
       setStats({ total_requests: 48520, total_429s: 142 });
       setConnectionError(false);
 
-      // Simulate live jitter in demo mode
       demoIntervalRef.current = setInterval(() => {
         setStats(prev => ({
           total_requests: prev.total_requests + Math.floor(Math.random() * 25) + 5,
@@ -89,7 +90,7 @@ function App() {
   }, [isDemoMode, fetchState]);
 
   return (
-    <div className="dashboard-wrapper">
+    <div className="dashboard-light-wrapper">
       {/* Global Top Navbar */}
       <AdminAuthBar
         isDemoMode={isDemoMode}
@@ -99,109 +100,141 @@ function App() {
         setActiveTab={setActiveTab}
       />
 
-      <main className="dashboard-content">
+      <main className="dashboard-main-content">
         {/* Offline Connection Alert Banner */}
         {connectionError && !isDemoMode && (
-          <div className="banner-offline">
-            <div className="banner-content">
-              <span className="banner-icon">⚠️</span>
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="clean-alert-banner"
+          >
+            <div className="alert-content-left">
+              <div className="alert-icon-circle">
+                <AlertTriangle size={18} />
+              </div>
               <div>
-                <strong>Gateway Control Plane Unreachable (Port :9091)</strong>
-                <p>
-                  Start the gateway backend with <code>go run cmd/gateway/main.go</code>, or enable{' '}
-                  <button className="link-button" onClick={() => setIsDemoMode(true)}>
+                <h4 className="alert-heading">Gateway Control Plane Offline (Port :9091)</h4>
+                <p className="alert-message">
+                  Unable to poll gateway telemetry. Start the backend with <code>go run cmd/gateway/main.go</code> or enable{' '}
+                  <button className="inline-action-btn" onClick={() => setIsDemoMode(true)}>
                     Demo Simulation Mode
                   </button>{' '}
                   to interact with the UI offline.
                 </p>
               </div>
             </div>
-            <button className="btn-secondary" onClick={fetchState}>
+            <button className="btn-light-secondary" onClick={fetchState}>
               Retry Connection
             </button>
-          </div>
+          </motion.div>
         )}
 
-        {/* Global Statistics Bar */}
+        {/* Global Statistics KPI Bar */}
         <StatsBar stats={stats} upstreams={upstreams} />
 
-        {/* TAB 1: Topology & Upstream Pools */}
-        {activeTab === 'topology' && (
-          <section className="tab-pane">
-            <div className="pane-header">
-              <div>
-                <h2 className="section-title">Upstream Pools & Circuit Breaker Topology</h2>
-                <p className="section-subtitle">
-                  Real-time health telemetry, active in-flight connection tracking, and runtime chaos fault injection per upstream target.
-                </p>
-              </div>
-              <div className="pane-stats-pill">
-                <span>{Object.keys(pools).length} Pools</span>
-                <span className="dot-sep">•</span>
-                <span>{upstreams.length} Instances</span>
-              </div>
-            </div>
-
-            {Object.keys(pools).sort().map(poolName => (
-              <div key={poolName} className="pool-container">
-                <div className="pool-header">
-                  <div className="pool-title-group">
-                    <span className="pool-icon">📦</span>
-                    <h3 className="pool-name">{poolName}</h3>
-                  </div>
-                  <div className="pool-meta">
-                    <span className="pool-badge">{pools[poolName].length} Instances</span>
-                  </div>
+        {/* Animated Tab Views */}
+        <AnimatePresence mode="wait">
+          {activeTab === 'topology' && (
+            <motion.section
+              key="topology"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+              className="tab-view-container"
+            >
+              <div className="view-header">
+                <div>
+                  <h2 className="view-title">Upstream Pools & Circuit Breakers</h2>
+                  <p className="view-subtitle">
+                    Active socket load monitoring, dynamic health check telemetry, and runtime fault injection per target node.
+                  </p>
                 </div>
-
-                <div className="upstreams-grid">
-                  {pools[poolName].map(up => (
-                    <UpstreamCard
-                      key={up.id}
-                      upstream={up}
-                      breaker={cbMap[up.id] || cbMap[up.url]}
-                      onChaosApplied={fetchState}
-                    />
-                  ))}
+                <div className="view-meta-pills">
+                  <span className="meta-pill">{Object.keys(pools).length} Pools</span>
+                  <span className="meta-pill">{upstreams.length} Instances</span>
                 </div>
               </div>
-            ))}
 
-            {Object.keys(pools).length === 0 && !connectionError && (
-              <div className="empty-state">
-                <div className="empty-icon">🔌</div>
-                <h3>No Upstream Pools Registered</h3>
-                <p>Ensure gateway routing and pools are defined in <code>configs/gateway.yaml</code>.</p>
-              </div>
-            )}
-          </section>
-        )}
+              {Object.keys(pools).sort().map(poolName => (
+                <div key={poolName} className="pool-card-group">
+                  <div className="pool-card-header">
+                    <div className="pool-heading-left">
+                      <div className="pool-icon-badge">
+                        <Layers size={16} />
+                      </div>
+                      <h3 className="pool-title">{poolName}</h3>
+                    </div>
+                    <span className="badge-soft-blue">{pools[poolName].length} Targets</span>
+                  </div>
 
-        {/* TAB 2: Traffic & Rate Limit Simulator */}
-        {activeTab === 'traffic' && (
-          <section className="tab-pane">
-            <TrafficGenerator onTrafficGenerated={fetchState} />
-          </section>
-        )}
+                  <div className="upstreams-grid-layout">
+                    {pools[poolName].map(up => (
+                      <UpstreamCard
+                        key={up.id}
+                        upstream={up}
+                        breaker={cbMap[up.id] || cbMap[up.url]}
+                        onChaosApplied={fetchState}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
 
-        {/* TAB 3: Gateway Configuration */}
-        {activeTab === 'config' && (
-          <section className="tab-pane">
-            <ConfigViewer />
-          </section>
-        )}
+              {Object.keys(pools).length === 0 && !connectionError && (
+                <div className="empty-panel-box">
+                  <Server size={32} className="empty-icon-subtle" />
+                  <h3>No Upstream Pools Registered</h3>
+                  <p>Check gateway routing and pools configured in <code>configs/gateway.yaml</code>.</p>
+                </div>
+              )}
+            </motion.section>
+          )}
+
+          {activeTab === 'traffic' && (
+            <motion.section
+              key="traffic"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+              className="tab-view-container"
+            >
+              <TrafficGenerator onTrafficGenerated={fetchState} />
+            </motion.section>
+          )}
+
+          {activeTab === 'config' && (
+            <motion.section
+              key="config"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+              className="tab-view-container"
+            >
+              <ConfigViewer />
+            </motion.section>
+          )}
+        </AnimatePresence>
       </main>
 
-      {/* Footer */}
-      <footer className="dashboard-footer">
-        <div className="footer-left">
+      {/* Modern Clean Footer */}
+      <footer className="dashboard-light-footer">
+        <div className="footer-left-content">
+          <ShieldCheck size={14} className="text-emerald" />
           <span>Flux-GO Enterprise Control Plane</span>
-          <span className="footer-dot">•</span>
+          <span className="footer-divider">•</span>
           <span>Zero-Allocation Token Bucket & Sliding Window Log</span>
         </div>
-        <div className="footer-right">
-          <a href="https://github.com/ANSUJKMEHER/Flux" target="_blank" rel="noreferrer" className="footer-link">
-            GitHub Repository
+        <div className="footer-right-content">
+          <a
+            href="https://github.com/ANSUJKMEHER/Flux"
+            target="_blank"
+            rel="noreferrer"
+            className="footer-nav-link"
+          >
+            GitHub Repository <ArrowRight size={12} className="inline-arrow" />
           </a>
         </div>
       </footer>

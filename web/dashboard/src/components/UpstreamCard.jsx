@@ -1,4 +1,9 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
+import { 
+  Server, 
+  Flame 
+} from 'lucide-react';
 import { injectChaos } from '../api';
 
 export default function UpstreamCard({ upstream, breaker, onChaosApplied }) {
@@ -24,89 +29,122 @@ export default function UpstreamCard({ upstream, breaker, onChaosApplied }) {
     }
   };
 
-  const getBreakerClass = (state) => {
-    switch (state?.toLowerCase()) {
-      case 'closed':
-        return 'breaker-closed';
-      case 'open':
-        return 'breaker-open';
-      case 'half-open':
-      case 'halfopen':
-        return 'breaker-halfopen';
-      default:
-        return 'breaker-closed';
-    }
-  };
-
   const breakerState = breaker?.state || 'closed';
   const breakerStats = breaker?.stats || {};
 
+  const getBreakerStyle = (state) => {
+    switch (state?.toLowerCase()) {
+      case 'closed':
+        return {
+          pillClass: 'cb-pill-closed',
+          label: 'CLOSED',
+          desc: 'Normal traffic flowing',
+        };
+      case 'open':
+        return {
+          pillClass: 'cb-pill-open',
+          label: 'OPEN',
+          desc: 'Fast-failing traffic (503)',
+        };
+      case 'half-open':
+      case 'halfopen':
+        return {
+          pillClass: 'cb-pill-halfopen',
+          label: 'HALF-OPEN',
+          desc: 'Canary probe traffic',
+        };
+      default:
+        return {
+          pillClass: 'cb-pill-closed',
+          label: 'CLOSED',
+          desc: 'Normal traffic flowing',
+        };
+    }
+  };
+
+  const cbStyle = getBreakerStyle(breakerState);
+
   return (
-    <div className={`upstream-card ${!upstream.healthy ? 'card-unhealthy' : ''}`}>
-      {/* Header */}
-      <div className="upstream-header">
-        <div className="upstream-identity">
-          <div className="upstream-title">{upstream.id}</div>
-          <span className="upstream-pool-tag">{upstream.pool || 'default-pool'}</span>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.25 }}
+      className={`upstream-node-card ${!upstream.healthy ? 'node-card-unhealthy' : ''}`}
+    >
+      {/* Node Header */}
+      <div className="node-card-header">
+        <div className="node-title-group">
+          <div className="node-icon-wrapper">
+            <Server size={17} />
+          </div>
+          <div>
+            <h4 className="node-id font-mono">{upstream.id}</h4>
+            <span className="node-pool-chip">{upstream.pool || 'default-pool'}</span>
+          </div>
         </div>
-        <span className={`status-pill ${upstream.healthy ? 'pill-healthy' : 'pill-unhealthy'}`}>
-          <span className="status-dot"></span>
-          {upstream.healthy ? 'HEALTHY' : 'OFFLINE'}
+
+        <span className={`node-health-badge ${upstream.healthy ? 'health-badge-ok' : 'health-badge-err'}`}>
+          <span className="pulse-circle"></span>
+          {upstream.healthy ? 'ONLINE' : 'OFFLINE'}
         </span>
       </div>
 
-      {/* Meta Info */}
-      <div className="upstream-meta">
-        <div className="meta-row">
-          <span className="meta-label">Target URL</span>
+      {/* Meta Properties */}
+      <div className="node-meta-grid">
+        <div className="node-meta-item">
+          <span className="meta-label">Target Address</span>
           <span className="meta-val font-mono">{upstream.url}</span>
         </div>
 
-        <div className="meta-row">
-          <span className="meta-label">Active Connections</span>
+        <div className="node-meta-item">
+          <span className="meta-label">In-Flight Conns</span>
           <span className="meta-val font-mono">
-            <span className="active-conn-badge">{upstream.active_connections || 0}</span>
+            <span className="active-conn-chip">{upstream.active_connections || 0}</span>
           </span>
         </div>
 
-        <div className="meta-row">
+        <div className="node-meta-item">
           <span className="meta-label">Circuit Breaker</span>
-          <span className={`breaker-badge ${getBreakerClass(breakerState)}`}>
-            <span className="breaker-dot"></span>
-            {breakerState.toUpperCase()}
+          <span className={`cb-state-pill ${cbStyle.pillClass}`}>
+            <span className="cb-dot"></span>
+            {cbStyle.label}
           </span>
         </div>
       </div>
 
       {/* Circuit Breaker Detailed Telemetry */}
       {breaker && (
-        <div className="breaker-details-box">
-          <div className="breaker-stat-item">
-            <span className="b-label">Consecutive Fails</span>
-            <span className="b-val" style={{ color: (breakerStats.consecutive_failures || 0) > 0 ? 'var(--orange)' : 'var(--text-main)' }}>
+        <div className="breaker-telemetry-strip">
+          <div className="b-metric-col">
+            <span className="b-metric-label">Consecutive Fails</span>
+            <span className={`b-metric-val font-mono ${(breakerStats.consecutive_failures || 0) > 0 ? 'text-amber' : ''}`}>
               {breakerStats.consecutive_failures || 0}
             </span>
           </div>
-          <div className="breaker-stat-item">
-            <span className="b-label">Total Failures</span>
-            <span className="b-val" style={{ color: (breakerStats.failures || 0) > 0 ? 'var(--red)' : 'var(--text-main)' }}>
+          <div className="b-metric-col">
+            <span className="b-metric-label">Total Failures</span>
+            <span className={`b-metric-val font-mono ${(breakerStats.failures || 0) > 0 ? 'text-rose' : ''}`}>
               {breakerStats.failures || 0}
             </span>
           </div>
-          <div className="breaker-stat-item">
-            <span className="b-label">Total Successes</span>
-            <span className="b-val" style={{ color: 'var(--green)' }}>
+          <div className="b-metric-col">
+            <span className="b-metric-label">Successes</span>
+            <span className="b-metric-val font-mono text-emerald">
               {breakerStats.successes || 0}
             </span>
           </div>
         </div>
       )}
 
-      {/* Chaos Injection Sandbox */}
-      <div className="chaos-section">
-        <div className="chaos-header">
-          <span className="chaos-title">Chaos Fault Injection</span>
-          <span className="chaos-percent">{chaosValue}% Error</span>
+      {/* Chaos Fault Injection Sandbox */}
+      <div className="node-chaos-box">
+        <div className="chaos-label-row">
+          <div className="chaos-title-box">
+            <Flame size={14} className="text-amber" />
+            <span className="chaos-title-text">Chaos Fault Injection</span>
+          </div>
+          <span className="chaos-percentage-badge">{chaosValue}% Error Rate</span>
         </div>
 
         <input
@@ -115,21 +153,20 @@ export default function UpstreamCard({ upstream, breaker, onChaosApplied }) {
           max="100"
           value={chaosValue}
           onChange={(e) => setChaosValue(e.target.value)}
-          className="chaos-slider"
+          className="clean-range-slider"
         />
 
-        {/* Quick Presets */}
-        <div className="chaos-presets">
+        <div className="chaos-preset-chips">
           {[
             { label: '0% Clean', val: 0 },
             { label: '25% Flaky', val: 25 },
             { label: '50% Loss', val: 50 },
             { label: '100% Trip', val: 100 },
-          ].map(p => (
+          ].map((p) => (
             <button
               key={p.val}
               type="button"
-              className={`preset-btn ${parseInt(chaosValue, 10) === p.val ? 'preset-active' : ''}`}
+              className={`preset-chip-btn ${parseInt(chaosValue, 10) === p.val ? 'preset-chip-active' : ''}`}
               onClick={() => {
                 setChaosValue(p.val);
                 applyChaos(p.val);
@@ -140,20 +177,21 @@ export default function UpstreamCard({ upstream, breaker, onChaosApplied }) {
           ))}
         </div>
 
-        <button
-          className="btn-apply-chaos"
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          className="btn-apply-fault"
           onClick={() => applyChaos(chaosValue)}
           disabled={applying}
         >
-          {applying ? 'Injecting Faults...' : `Apply ${chaosValue}% Failure Rate`}
-        </button>
+          {applying ? 'Injecting Fault...' : `Apply ${chaosValue}% Fault Rate`}
+        </motion.button>
 
         {chaosStatus && (
-          <div className={`chaos-status-msg msg-${chaosStatus.type}`}>
+          <div className={`status-toast toast-${chaosStatus.type}`}>
             {chaosStatus.msg}
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
