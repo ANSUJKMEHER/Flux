@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Layers, AlertTriangle, Server, ArrowRight, ShieldCheck } from 'lucide-react';
 import AdminAuthBar from './components/AdminAuthBar';
 import StatsBar from './components/StatsBar';
 import UpstreamCard from './components/UpstreamCard';
@@ -34,7 +33,7 @@ function App() {
 
   // Map breakers for O(1) lookup
   const cbMap = {};
-  breakers.forEach(b => {
+  breakers.forEach((b) => {
     cbMap[b.upstream] = b;
   });
 
@@ -53,12 +52,11 @@ function App() {
       setStats(statsData || { total_requests: 0, total_429s: 0 });
       setConnectionError(false);
     } catch (e) {
-      console.warn("Gateway polling error:", e.message);
+      console.warn('Gateway polling error:', e.message);
       setConnectionError(true);
     }
   }, [isDemoMode]);
 
-  // Polling loop
   useEffect(() => {
     if (isDemoMode) {
       setUpstreams(DEMO_UPSTREAMS);
@@ -67,12 +65,12 @@ function App() {
       setConnectionError(false);
 
       demoIntervalRef.current = setInterval(() => {
-        setStats(prev => ({
+        setStats((prev) => ({
           total_requests: prev.total_requests + Math.floor(Math.random() * 25) + 5,
           total_429s: prev.total_429s + (Math.random() > 0.8 ? 1 : 0),
         }));
-        setUpstreams(prev =>
-          prev.map(u => ({
+        setUpstreams((prev) =>
+          prev.map((u) => ({
             ...u,
             active_connections: Math.max(0, u.active_connections + Math.floor(Math.random() * 3) - 1),
           }))
@@ -90,8 +88,8 @@ function App() {
   }, [isDemoMode, fetchState]);
 
   return (
-    <div className="dashboard-light-wrapper">
-      {/* Global Top Navbar */}
+    <div className="narv-app-wrapper">
+      {/* Top Terminal Strip Navigation */}
       <AdminAuthBar
         isDemoMode={isDemoMode}
         setIsDemoMode={setIsDemoMode}
@@ -100,39 +98,25 @@ function App() {
         setActiveTab={setActiveTab}
       />
 
-      <main className="dashboard-main-content">
-        {/* Offline Connection Alert Banner */}
+      <main className="narv-main">
+        {/* Connection Notice */}
         {connectionError && !isDemoMode && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="clean-alert-banner"
-          >
-            <div className="alert-content-left">
-              <div className="alert-icon-circle">
-                <AlertTriangle size={18} />
-              </div>
-              <div>
-                <h4 className="alert-heading">Gateway Control Plane Offline (Port :9091)</h4>
-                <p className="alert-message">
-                  Unable to poll gateway telemetry. Start the backend with <code>go run cmd/gateway/main.go</code> or enable{' '}
-                  <button className="inline-action-btn" onClick={() => setIsDemoMode(true)}>
-                    Demo Simulation Mode
-                  </button>{' '}
-                  to interact with the UI offline.
-                </p>
-              </div>
-            </div>
-            <button className="btn-light-secondary" onClick={fetchState}>
-              Retry Connection
+          <div className="narv-notice-banner font-mono">
+            <span className="text-rose font-bold">[WARN. 01]</span>
+            <span>Gateway offline on :9091. Run <code>go run cmd/gateway/main.go</code> or enable</span>
+            <button className="narv-link-btn" onClick={() => setIsDemoMode(true)}>
+              [ SIMULATION MODE ]
             </button>
-          </motion.div>
+            <button className="narv-btn-black font-mono text-xs ml-auto" onClick={fetchState}>
+              [ RETRY ]
+            </button>
+          </div>
         )}
 
-        {/* Global Statistics KPI Bar */}
+        {/* Global KPI Metrics Section (The 4 Cards) */}
         <StatsBar stats={stats} upstreams={upstreams} />
 
-        {/* Animated Tab Views */}
+        {/* Dynamic Tab Views */}
         <AnimatePresence mode="wait">
           {activeTab === 'topology' && (
             <motion.section
@@ -140,36 +124,39 @@ function App() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.25 }}
-              className="tab-view-container"
+              transition={{ duration: 0.2 }}
+              className="narv-section"
             >
-              <div className="view-header">
-                <div>
-                  <h2 className="view-title">Upstream Pools & Circuit Breakers</h2>
-                  <p className="view-subtitle">
-                    Active socket load monitoring, dynamic health check telemetry, and runtime fault injection per target node.
-                  </p>
+              <div className="narv-hero-header">
+                <div className="narv-sub-tag font-mono">
+                  <span className="text-orange">[TOPO. 01 / 04]</span>
+                  <span className="narv-status-sep">&gt;</span>
+                  <span className="text-dark font-bold">UPSTREAM TOPOLOGY &amp; FAULT INJECTION</span>
                 </div>
-                <div className="view-meta-pills">
-                  <span className="meta-pill">{Object.keys(pools).length} Pools</span>
-                  <span className="meta-pill">{upstreams.length} Instances</span>
+
+                <div className="narv-header-action-row">
+                  <h2 className="narv-slashed-heading">
+                    <span className="slash-token">/ </span>
+                    <span className="heading-bold">Zero cascading failures.</span>{' '}
+                    <span className="heading-muted">Active load distribution and live fault induction.</span>
+                    <span className="slash-token"> /</span>
+                  </h2>
+
+                  <div className="narv-header-btns font-mono text-xs text-muted">
+                    <span>{Object.keys(pools).length} POOLS // {upstreams.length} NODES</span>
+                  </div>
                 </div>
               </div>
 
-              {Object.keys(pools).sort().map(poolName => (
-                <div key={poolName} className="pool-card-group">
-                  <div className="pool-card-header">
-                    <div className="pool-heading-left">
-                      <div className="pool-icon-badge">
-                        <Layers size={16} />
-                      </div>
-                      <h3 className="pool-title">{poolName}</h3>
-                    </div>
-                    <span className="badge-soft-blue">{pools[poolName].length} Targets</span>
+              {Object.keys(pools).sort().map((poolName) => (
+                <div key={poolName} className="narv-pool-block">
+                  <div className="narv-pool-header font-mono">
+                    <span className="narv-pool-badge text-orange">&gt; POOL: {poolName.toUpperCase()}</span>
+                    <span className="text-muted text-xs">[{pools[poolName].length} INSTANCES]</span>
                   </div>
 
-                  <div className="upstreams-grid-layout">
-                    {pools[poolName].map(up => (
+                  <div className="narv-nodes-grid">
+                    {pools[poolName].map((up) => (
                       <UpstreamCard
                         key={up.id}
                         upstream={up}
@@ -182,59 +169,57 @@ function App() {
               ))}
 
               {Object.keys(pools).length === 0 && !connectionError && (
-                <div className="empty-panel-box">
-                  <Server size={32} className="empty-icon-subtle" />
-                  <h3>No Upstream Pools Registered</h3>
-                  <p>Check gateway routing and pools configured in <code>configs/gateway.yaml</code>.</p>
+                <div className="narv-box">
+                  <div className="narv-empty font-mono">
+                    [ No active pools registered in gateway.yaml ]
+                  </div>
                 </div>
               )}
             </motion.section>
           )}
 
           {activeTab === 'traffic' && (
-            <motion.section
+            <motion.div
               key="traffic"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.25 }}
-              className="tab-view-container"
+              transition={{ duration: 0.2 }}
             >
               <TrafficGenerator onTrafficGenerated={fetchState} />
-            </motion.section>
+            </motion.div>
           )}
 
           {activeTab === 'config' && (
-            <motion.section
+            <motion.div
               key="config"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.25 }}
-              className="tab-view-container"
+              transition={{ duration: 0.2 }}
             >
               <ConfigViewer />
-            </motion.section>
+            </motion.div>
           )}
         </AnimatePresence>
       </main>
 
-      {/* Modern Clean Footer */}
-      <footer className="dashboard-light-footer">
-        <div className="footer-left-content">
-          <ShieldCheck size={14} className="text-emerald" />
-          <span>Flux-GO Enterprise Control Plane</span>
-          <span className="footer-divider">•</span>
-          <span>Zero-Allocation Token Bucket & Sliding Window Log</span>
+      {/* Terminal Minimalist Footer */}
+      <footer className="narv-footer font-mono">
+        <div className="narv-footer-left">
+          <span className="text-orange">■</span>
+          <span>FLUX-GO CONTROL PLANE</span>
+          <span className="text-muted">//</span>
+          <span className="text-muted">ATOMIC REDIS LUA &amp; KETAMA RING</span>
         </div>
-        <div className="footer-right-content">
+        <div className="narv-footer-right">
           <a
             href="https://github.com/ANSUJKMEHER/Flux"
             target="_blank"
             rel="noreferrer"
-            className="footer-nav-link"
+            className="narv-footer-link"
           >
-            GitHub Repository <ArrowRight size={12} className="inline-arrow" />
+            [ GITHUB REPOSITORY ↗ ]
           </a>
         </div>
       </footer>

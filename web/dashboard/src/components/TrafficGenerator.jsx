@@ -1,33 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Zap, 
-  Play, 
-  Square, 
-  RotateCcw, 
-  Send, 
-  Clock, 
-  ShieldAlert, 
-  Key, 
-  Layers, 
-  CheckCircle2, 
-  Copy,
-  Check
-} from 'lucide-react';
+import { Copy, Check } from 'lucide-react';
 import { sendTrafficRequest } from '../api';
 
 const PRESET_TIERS = [
-  { label: 'Free Tier (10 rps / burst 20)', key: 'free-key-001', tier: 'free', desc: 'Default public user tier' },
-  { label: 'Pro Tier (100 rps / burst 200)', key: 'pro-key-001', tier: 'pro', desc: 'High-volume production key' },
-  { label: 'Enterprise (1000 rps)', key: 'enterprise-key-001', tier: 'enterprise', desc: 'Hyperscale dedicated tier' },
-  { label: 'Invalid Key (Expect 401)', key: 'invalid-token-demo', tier: 'invalid', desc: 'Simulate unauthorized client' },
-  { label: 'Anonymous (No Key Header)', key: '', tier: 'none', desc: 'Tests fallback tier handling' },
+  { label: 'Free Tier (10 rps / burst 20)', key: 'free-key-001', tier: 'free' },
+  { label: 'Pro Tier (100 rps / burst 200)', key: 'pro-key-001', tier: 'pro' },
+  { label: 'Enterprise Tier (1000 rps)', key: 'enterprise-key-001', tier: 'enterprise' },
+  { label: 'Invalid Key (Expect 401)', key: 'invalid-token-demo', tier: 'invalid' },
+  { label: 'Anonymous (No Key Header)', key: '', tier: 'none' },
 ];
 
 const PRESET_ROUTES = [
-  { path: '/api/v1/users', name: 'Users API', algo: 'Token Bucket', pool: 'users-pool' },
-  { path: '/api/v1/orders', name: 'Orders API', algo: 'Sliding Window Log', pool: 'orders-pool' },
-  { path: '/api/v1/products', name: 'Products API', algo: 'Token Bucket', pool: 'products-pool' },
+  { path: '/api/v1/users', name: 'Users API', algo: 'Token Bucket' },
+  { path: '/api/v1/orders', name: 'Orders API', algo: 'Sliding Window Log' },
+  { path: '/api/v1/products', name: 'Products API', algo: 'Token Bucket' },
 ];
 
 export default function TrafficGenerator({ onTrafficGenerated }) {
@@ -125,262 +112,222 @@ export default function TrafficGenerator({ onTrafficGenerated }) {
   const totalSent = counts.ok + counts.rateLimited + counts.breakerOpen + counts.unauthorized + counts.error;
 
   return (
-    <div className="traffic-studio-container">
-      {/* Studio Header */}
-      <div className="studio-header">
-        <div>
-          <div className="studio-title-row">
-            <div className="studio-icon-box">
-              <Zap size={18} />
-            </div>
-            <h2 className="studio-title">Traffic & Rate Limit Simulator</h2>
-          </div>
-          <p className="studio-desc">
-            Generate synthetic high-concurrency bursts against the gateway to test token bucket refills, sliding-window precision, and circuit breaker trip points in real time.
-          </p>
+    <section className="narv-section">
+      {/* Header */}
+      <div className="narv-hero-header">
+        <div className="narv-sub-tag font-mono">
+          <span className="text-orange">[SIM. 02 / 04]</span>
+          <span className="narv-status-sep">&gt;</span>
+          <span className="text-dark font-bold">SYNTHETIC TRAFFIC & RATE LIMIT SUITE</span>
         </div>
 
-        <div className="studio-actions">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className={`btn-stream-toggle ${isLooping ? 'stream-active' : ''}`}
-            onClick={() => setIsLooping(!isLooping)}
-          >
-            {isLooping ? (
-              <>
-                <Square size={13} fill="currentColor" /> Stop Stream
-              </>
-            ) : (
-              <>
-                <Play size={13} fill="currentColor" /> Continuous Pulse
-              </>
-            )}
-          </motion.button>
+        <div className="narv-header-action-row">
+          <h1 className="narv-slashed-heading">
+            <span className="slash-token">/ </span>
+            <span className="heading-bold">Push concurrency to the limit.</span>{' '}
+            <span className="heading-muted">Observe token refills and sliding window accuracy.</span>
+            <span className="slash-token"> /</span>
+          </h1>
 
-          <button
-            className="btn-light-secondary"
-            onClick={clearHistory}
-            disabled={totalSent === 0}
-          >
-            <RotateCcw size={14} /> Clear
-          </button>
+          <div className="narv-header-btns">
+            <button
+              type="button"
+              className={`narv-btn-pill font-mono ${isLooping ? 'narv-btn-pill-active' : ''}`}
+              onClick={() => setIsLooping(!isLooping)}
+            >
+              {isLooping ? '[ ■ STOP STREAM ]' : '[ ▶ CONTINUOUS PULSE ]'}
+            </button>
+            <button
+              type="button"
+              className="narv-btn-subtle font-mono text-xs"
+              onClick={clearHistory}
+              disabled={totalSent === 0}
+            >
+              [ RESET ]
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Control Configuration Bar */}
-      <div className="studio-control-card">
-        <div className="control-field">
-          <label className="field-label">Target Route</label>
-          <div className="custom-select-wrapper">
-            <select
-              className="field-select"
-              value={selectedRoute}
-              onChange={(e) => setSelectedRoute(e.target.value)}
-            >
-              {PRESET_ROUTES.map((r) => (
-                <option key={r.path} value={r.path}>
-                  {r.name} — {r.algo} ({r.path})
-                </option>
-              ))}
-            </select>
-          </div>
+      {/* Control Panel Strip */}
+      <div className="narv-control-panel">
+        <div className="narv-field">
+          <label className="narv-field-label font-mono">TARGET ROUTE</label>
+          <select
+            className="narv-select font-mono"
+            value={selectedRoute}
+            onChange={(e) => setSelectedRoute(e.target.value)}
+          >
+            {PRESET_ROUTES.map((r) => (
+              <option key={r.path} value={r.path}>
+                &gt; {r.name} [{r.algo}] ({r.path})
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="control-field">
-          <label className="field-label">Client Identity & Tier</label>
-          <div className="custom-select-wrapper">
-            <select
-              className="field-select"
-              value={selectedTier.key}
-              onChange={(e) => {
-                const found = PRESET_TIERS.find((t) => t.key === e.target.value) || PRESET_TIERS[0];
-                setSelectedTier(found);
-              }}
-            >
-              {PRESET_TIERS.map((t) => (
-                <option key={t.key} value={t.key}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="narv-field">
+          <label className="narv-field-label font-mono">CLIENT IDENTITY / TIER</label>
+          <select
+            className="narv-select font-mono"
+            value={selectedTier.key}
+            onChange={(e) => {
+              const found = PRESET_TIERS.find((t) => t.key === e.target.value) || PRESET_TIERS[0];
+              setSelectedTier(found);
+            }}
+          >
+            {PRESET_TIERS.map((t) => (
+              <option key={t.key} value={t.key}>
+                &gt; {t.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="control-field">
-          <label className="field-label">Burst Magnitude</label>
-          <div className="magnitude-pills">
+        <div className="narv-field">
+          <label className="narv-field-label font-mono">BURST MAGNITUDE</label>
+          <div className="narv-pills-row">
             {[1, 10, 25, 50, 100].map((sz) => (
               <button
                 key={sz}
                 type="button"
-                className={`mag-pill ${burstSize === sz ? 'mag-pill-active' : ''}`}
+                className={`narv-size-pill font-mono ${burstSize === sz ? 'narv-size-pill-active' : ''}`}
                 onClick={() => setBurstSize(sz)}
               >
-                {sz}
+                [{sz < 10 ? `0${sz}` : sz}]
               </button>
             ))}
           </div>
         </div>
 
-        <div className="control-field action-field">
+        <div className="narv-field narv-action-col">
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="btn-trigger-burst"
+            className="narv-btn-black font-mono narv-btn-trigger"
             onClick={() => runBurst()}
             disabled={isRunning}
           >
-            {isRunning ? (
-              <span className="flex-center">
-                <span className="spinner-dots"></span> Bursting {burstSize}...
-              </span>
-            ) : (
-              <span className="flex-center">
-                <Send size={15} /> Send {burstSize} Requests
-              </span>
-            )}
+            <span className="narv-square-indicator">■</span>
+            <span>{isRunning ? `BURSTING ${burstSize}...` : `SEND ${burstSize} REQS`}</span>
           </motion.button>
         </div>
       </div>
 
-      {/* Telemetry Summary Ribbon */}
-      <div className="telemetry-ribbon">
-        <div className="telem-badge telem-ok">
-          <div className="telem-header">
-            <CheckCircle2 size={13} />
-            <span>200 OK</span>
-          </div>
-          <div className="telem-num">{counts.ok}</div>
+      {/* Telemetry Counter Ribbon */}
+      <div className="narv-telemetry-ribbon font-mono">
+        <div className="narv-telemetry-item">
+          <span className="narv-telemetry-tag text-emerald">// 200 OK</span>
+          <span className="narv-telemetry-val font-bold">{counts.ok}</span>
         </div>
-
-        <div className="telem-badge telem-limited">
-          <div className="telem-header">
-            <Clock size={13} />
-            <span>429 Rate Limited</span>
-          </div>
-          <div className="telem-num">{counts.rateLimited}</div>
+        <div className="narv-telemetry-item">
+          <span className="narv-telemetry-tag text-orange">// 429 LIMITED</span>
+          <span className="narv-telemetry-val font-bold">{counts.rateLimited}</span>
         </div>
-
-        <div className="telem-badge telem-breaker">
-          <div className="telem-header">
-            <ShieldAlert size={13} />
-            <span>503 CB Open</span>
-          </div>
-          <div className="telem-num">{counts.breakerOpen}</div>
+        <div className="narv-telemetry-item">
+          <span className="narv-telemetry-tag text-rose">// 503 CB OPEN</span>
+          <span className="narv-telemetry-val font-bold">{counts.breakerOpen}</span>
         </div>
-
-        <div className="telem-badge telem-unauth">
-          <div className="telem-header">
-            <Key size={13} />
-            <span>401 Unauthorized</span>
-          </div>
-          <div className="telem-num">{counts.unauthorized}</div>
+        <div className="narv-telemetry-item">
+          <span className="narv-telemetry-tag text-purple">// 401 UNAUTH</span>
+          <span className="narv-telemetry-val font-bold">{counts.unauthorized}</span>
         </div>
-
-        <div className="telem-badge telem-latency">
-          <div className="telem-header">
-            <Clock size={13} />
-            <span>Latency (Avg / Min / Max)</span>
-          </div>
-          <div className="telem-num">
-            {avgLatency}ms <span className="telem-sub">({minLatency} / {maxLatency}ms)</span>
-          </div>
+        <div className="narv-telemetry-item">
+          <span className="narv-telemetry-tag text-slate">// LATENCY</span>
+          <span className="narv-telemetry-val font-bold">
+            {avgLatency}ms <span className="text-muted text-xs">({minLatency}/{maxLatency}ms)</span>
+          </span>
         </div>
       </div>
 
-      {/* Two Column Grid: RFC Header Inspector & Live Log */}
-      <div className="studio-details-grid">
+      {/* Two Column Grid */}
+      <div className="narv-grid-two">
         {/* Left: Headers Inspector */}
-        <div className="surface-card">
-          <div className="surface-card-header">
-            <div className="card-title-group">
-              <Layers size={16} className="text-indigo" />
-              <h3 className="card-title">Gateway Rate-Limit Headers</h3>
-            </div>
+        <div className="narv-box">
+          <div className="narv-box-header">
+            <div className="font-mono text-orange text-xs">[RFC-6585] &gt; GATEWAY_HEADERS</div>
             {latestHeaders && (
-              <button className="btn-copy-sm" onClick={copyHeadersJson}>
+              <button className="narv-btn-subtle font-mono text-xs flex-center" onClick={copyHeadersJson}>
                 {copiedHeader ? <Check size={12} /> : <Copy size={12} />}
-                <span>{copiedHeader ? 'Copied' : 'JSON'}</span>
+                <span>{copiedHeader ? 'COPIED' : 'COPY'}</span>
               </button>
             )}
           </div>
 
-          <div className="surface-card-body">
+          <div className="narv-box-body">
             {latestHeaders && Object.keys(latestHeaders).length > 0 ? (
-              <div className="headers-box">
+              <div className="narv-headers-list">
                 {Object.entries(latestHeaders).map(([key, val]) => (
-                  <div key={key} className="header-entry-row">
-                    <span className="header-name">{key}:</span>
-                    <span className="header-value font-mono">{val}</span>
+                  <div key={key} className="narv-header-row font-mono">
+                    <span className="header-key text-orange">{key}:</span>
+                    <span className="header-val text-dark">{val}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="empty-studio-box">
-                <Clock size={24} className="empty-icon-subtle" />
-                <p>Send a request to inspect RFC-6585 rate limit headers returned by the gateway.</p>
+              <div className="narv-empty font-mono">
+                [ Awaiting traffic to capture rate-limit headers ]
               </div>
             )}
 
-            <div className="callout-note">
-              <strong>Rate Limiting Mechanics:</strong> Requests hitting token exhaustion immediately return HTTP 429 with <code>Retry-After</code>, <code>X-RateLimit-Limit</code>, and <code>X-RateLimit-Remaining</code> without touching upstream servers.
+            <div className="narv-box-footer font-mono">
+              RFC-6585 RATE-LIMITING PROTOCOL ENFORCEMENT
             </div>
           </div>
         </div>
 
-        {/* Right: Live Telemetry Stream */}
-        <div className="surface-card">
-          <div className="surface-card-header">
-            <div className="card-title-group">
-              <Clock size={16} className="text-indigo" />
-              <h3 className="card-title">Live Activity Stream</h3>
-            </div>
-            <span className="stream-count-pill">{logs.length} events</span>
+        {/* Right: Live Activity Stream */}
+        <div className="narv-box">
+          <div className="narv-box-header">
+            <div className="font-mono text-orange text-xs">[LOGS. 01] &gt; IN-FLIGHT_STREAM</div>
+            <span className="font-mono text-muted text-xs">{logs.length} EVENTS</span>
           </div>
 
-          <div className="surface-card-body stream-body">
+          <div className="narv-box-body">
             {logs.length === 0 ? (
-              <div className="empty-studio-box">
-                <Send size={24} className="empty-icon-subtle" />
-                <p>Awaiting traffic events. Click "Send Requests" above to start streaming.</p>
+              <div className="narv-empty font-mono">
+                [ Awaiting requests. Click "SEND REQS" above ]
               </div>
             ) : (
-              <div className="stream-list">
+              <div className="narv-stream-container font-mono">
                 <AnimatePresence initial={false}>
                   {logs.map((log, idx) => (
                     <motion.div
                       key={idx}
-                      initial={{ opacity: 0, x: -10 }}
+                      initial={{ opacity: 0, x: -6 }}
                       animate={{ opacity: 1, x: 0 }}
-                      className="stream-item-row"
+                      className="narv-stream-row"
                     >
-                      <span className="stream-time">{log.timestamp}</span>
+                      <span className="text-muted text-xs">{log.timestamp}</span>
                       <span
-                        className={`stream-status-pill ${
+                        className={`narv-status-pill ${
                           log.status === 200
-                            ? 'pill-status-200'
+                            ? 'status-200'
                             : log.status === 429
-                            ? 'pill-status-429'
+                            ? 'status-429'
                             : log.status === 503
-                            ? 'pill-status-503'
+                            ? 'status-503'
                             : log.status === 401
-                            ? 'pill-status-401'
-                            : 'pill-status-err'
+                            ? 'status-401'
+                            : 'status-err'
                         }`}
                       >
                         {log.status || 'ERR'}
                       </span>
-                      <span className="stream-path font-mono">{log.endpoint}</span>
-                      <span className="stream-latency font-mono">{log.duration}ms</span>
+                      <span className="text-dark flex-1">{log.endpoint}</span>
+                      <span className="text-orange">{log.duration}ms</span>
                     </motion.div>
                   ))}
                 </AnimatePresence>
               </div>
             )}
+
+            <div className="narv-box-footer font-mono">
+              REAL-TIME EVENT DISPATCH LOGGER
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { Settings, RefreshCw, Route, Shield, Layers, Server } from 'lucide-react';
 import { fetchConfig } from '../api';
 
 export default function ConfigViewer() {
@@ -27,10 +25,9 @@ export default function ConfigViewer() {
 
   if (loading) {
     return (
-      <div className="surface-card">
-        <div className="empty-studio-box">
-          <RefreshCw size={24} className="spin-icon text-indigo" />
-          <p>Fetching sanitized gateway configuration from <code>/admin/config</code>...</p>
+      <div className="narv-box">
+        <div className="narv-empty font-mono">
+          [ Fetching sanitized configuration from /admin/config... ]
         </div>
       </div>
     );
@@ -38,12 +35,14 @@ export default function ConfigViewer() {
 
   if (error || !config) {
     return (
-      <div className="surface-card">
-        <div className="banner-alert-box">
-          <p>Unable to load configuration: {error || 'No data returned'}</p>
-          <button className="btn-light-secondary" onClick={loadConfig}>
-            Retry
-          </button>
+      <div className="narv-box">
+        <div className="narv-empty font-mono text-rose">
+          [ Error loading configuration: {error || 'No data'} ]
+          <div style={{ marginTop: '0.75rem' }}>
+            <button className="narv-btn-black font-mono text-xs" onClick={loadConfig}>
+              [ RETRY ]
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -52,157 +51,150 @@ export default function ConfigViewer() {
   const { routes = [], rate_limits = {}, breaker = {}, health = {}, pools = {} } = config;
 
   return (
-    <div className="config-inspector-container">
+    <section className="narv-section">
       {/* Header */}
-      <div className="studio-header">
-        <div>
-          <div className="studio-title-row">
-            <div className="studio-icon-box">
-              <Settings size={18} />
-            </div>
-            <h2 className="studio-title">Gateway Configuration Inspector</h2>
-          </div>
-          <p className="studio-desc">
-            Sanitized live configuration from <code>/admin/config</code>. All sensitive credentials, tokens, and internal keys are automatically redacted by the admin control plane.
-          </p>
+      <div className="narv-hero-header">
+        <div className="narv-sub-tag font-mono">
+          <span className="text-orange">[CFG. 03 / 04]</span>
+          <span className="narv-status-sep">&gt;</span>
+          <span className="text-dark font-bold">GATEWAY CONFIGURATION SCHEMAS</span>
         </div>
 
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="btn-light-secondary"
-          onClick={loadConfig}
-        >
-          <RefreshCw size={14} /> Refresh Configuration
-        </motion.button>
+        <div className="narv-header-action-row">
+          <h1 className="narv-slashed-heading">
+            <span className="slash-token">/ </span>
+            <span className="heading-bold">Sanitized runtime rules.</span>{' '}
+            <span className="heading-muted">First-match routing, token algorithms, and breaker parameters.</span>
+            <span className="slash-token"> /</span>
+          </h1>
+
+          <button
+            type="button"
+            className="narv-btn-pill font-mono"
+            onClick={loadConfig}
+          >
+            [ REFRESH CONFIG ]
+          </button>
+        </div>
       </div>
 
-      <div className="config-cards-grid">
+      <div className="narv-grid-two">
         {/* Routing Rules */}
-        <div className="surface-card">
-          <div className="surface-card-header">
-            <div className="card-title-group">
-              <Route size={16} className="text-indigo" />
-              <h3 className="card-title">Routing Rules ({routes.length})</h3>
-            </div>
-            <span className="badge-soft-blue">First-Match Wins</span>
+        <div className="narv-box">
+          <div className="narv-box-header">
+            <span className="font-mono text-orange text-xs">[ROUTES. 01] &gt; FIRST_MATCH_ROUTING ({routes.length})</span>
           </div>
-
-          <div className="table-wrapper">
-            <table className="clean-table">
+          <div className="narv-box-body">
+            <table className="narv-table font-mono">
               <thead>
                 <tr>
-                  <th>Path Prefix</th>
-                  <th>Target Pool</th>
-                  <th>Algorithm</th>
-                  <th>Tier Override</th>
+                  <th>PATH PREFIX</th>
+                  <th>POOL</th>
+                  <th>ALGO</th>
+                  <th>TIER</th>
                 </tr>
               </thead>
               <tbody>
                 {routes.map((r, i) => (
                   <tr key={i}>
-                    <td className="font-mono text-indigo font-bold">{r.path_prefix}</td>
-                    <td><span className="pool-chip">{r.pool}</span></td>
-                    <td className="font-mono text-slate">{r.algorithm || 'tier-default'}</td>
-                    <td><span className="badge-soft-neutral">{r.rate_limit_tier || 'auth-derived'}</span></td>
+                    <td className="text-orange font-bold">{r.path_prefix}</td>
+                    <td>[{r.pool}]</td>
+                    <td>{r.algorithm || 'default'}</td>
+                    <td className="text-muted">{r.rate_limit_tier || 'auth-derived'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <div className="narv-box-footer font-mono">
+              DYNAMIC PREFIX PATH RESOLUTION
+            </div>
           </div>
         </div>
 
         {/* Rate Limiting Tiers */}
-        <div className="surface-card">
-          <div className="surface-card-header">
-            <div className="card-title-group">
-              <Layers size={16} className="text-indigo" />
-              <h3 className="card-title">Rate Limiting Tiers ({Object.keys(rate_limits).length})</h3>
-            </div>
-            <span className="badge-soft-emerald">Atomic Redis Lua</span>
+        <div className="narv-box">
+          <div className="narv-box-header">
+            <span className="font-mono text-orange text-xs">[TIERS. 02] &gt; RATE_LIMIT_TIERS ({Object.keys(rate_limits).length})</span>
           </div>
-
-          <div className="table-wrapper">
-            <table className="clean-table">
+          <div className="narv-box-body">
+            <table className="narv-table font-mono">
               <thead>
                 <tr>
-                  <th>Tier</th>
-                  <th>Algorithm</th>
-                  <th>Refill Rate</th>
-                  <th>Burst Capacity</th>
-                  <th>Window</th>
+                  <th>TIER</th>
+                  <th>ALGO</th>
+                  <th>REFILL</th>
+                  <th>BURST</th>
+                  <th>WINDOW</th>
                 </tr>
               </thead>
               <tbody>
                 {Object.entries(rate_limits).map(([name, tier]) => (
                   <tr key={name}>
-                    <td className="font-bold text-slate-dark">{name.toUpperCase()}</td>
-                    <td className="font-mono text-slate">{tier.algorithm}</td>
-                    <td className="font-mono font-bold text-indigo">{tier.rate} <span className="table-unit">tokens/s</span></td>
-                    <td className="font-mono">{tier.burst} <span className="table-unit">burst</span></td>
-                    <td className="text-slate">{tier.window || 'continuous'}</td>
+                    <td className="text-dark font-bold">// {name.toUpperCase()}</td>
+                    <td>{tier.algorithm}</td>
+                    <td className="text-orange">{tier.rate} rps</td>
+                    <td>{tier.burst}</td>
+                    <td className="text-muted">{tier.window || '-'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <div className="narv-box-footer font-mono">
+              ATOMIC REDIS LUA RATE LIMITING
+            </div>
           </div>
         </div>
 
-        {/* Resilience & Health Settings */}
-        <div className="surface-card">
-          <div className="surface-card-header">
-            <div className="card-title-group">
-              <Shield size={16} className="text-indigo" />
-              <h3 className="card-title">Resilience & Circuit Breaker Settings</h3>
-            </div>
+        {/* Circuit Breaker & Health Settings */}
+        <div className="narv-box">
+          <div className="narv-box-header">
+            <span className="font-mono text-orange text-xs">[RESILIENCE. 03] &gt; FSM_THRESHOLDS</span>
           </div>
-
-          <div className="meta-key-value-list">
-            <div className="meta-kv-item">
-              <span className="kv-label">Failure Trip Threshold</span>
-              <span className="kv-val font-mono">{breaker.consecutive_failures ?? 5} consecutive errors</span>
+          <div className="narv-box-body font-mono">
+            <div className="narv-kv-strip">
+              <span className="text-muted">FAILURE_TRIP_THRESHOLD:</span>
+              <span className="text-orange font-bold">{breaker.consecutive_failures ?? 5} CONSECUTIVE</span>
             </div>
-            <div className="meta-kv-item">
-              <span className="kv-label">Breaker Cooldown Duration</span>
-              <span className="kv-val font-mono">{breaker.timeout ?? '10s'}</span>
+            <div className="narv-kv-strip">
+              <span className="text-muted">OPEN_STATE_COOLDOWN:</span>
+              <span className="text-dark font-bold">{breaker.timeout ?? '10s'}</span>
             </div>
-            <div className="meta-kv-item">
-              <span className="kv-label">Half-Open Canary Quota</span>
-              <span className="kv-val font-mono">{breaker.half_open_requests ?? 3} probes</span>
+            <div className="narv-kv-strip">
+              <span className="text-muted">CANARY_HALF_OPEN_PROBES:</span>
+              <span className="text-dark font-bold">{breaker.half_open_requests ?? 3} PROBES</span>
             </div>
-            <div className="meta-kv-item">
-              <span className="kv-label">Active Health Probe Interval</span>
-              <span className="kv-val font-mono">{health.interval ?? '5s'}</span>
+            <div className="narv-kv-strip">
+              <span className="text-muted">HEALTH_CHECK_INTERVAL:</span>
+              <span className="text-dark font-bold">{health.interval ?? '5s'}</span>
             </div>
-            <div className="meta-kv-item">
-              <span className="kv-label">Health Check HTTP Path</span>
-              <span className="kv-val font-mono">{health.path ?? '/health'}</span>
+            <div className="narv-kv-strip">
+              <span className="text-muted">HEALTH_CHECK_PATH:</span>
+              <span className="text-dark font-bold">{health.path ?? '/health'}</span>
+            </div>
+            <div className="narv-box-footer font-mono">
+              HYSTERESIS CASCADE PREVENTION
             </div>
           </div>
         </div>
 
         {/* Upstream Pools */}
-        <div className="surface-card">
-          <div className="surface-card-header">
-            <div className="card-title-group">
-              <Server size={16} className="text-indigo" />
-              <h3 className="card-title">Registered Upstream Pools ({Object.keys(pools).length})</h3>
-            </div>
+        <div className="narv-box">
+          <div className="narv-box-header">
+            <span className="font-mono text-orange text-xs">[POOLS. 04] &gt; REGISTERED_POOLS ({Object.keys(pools).length})</span>
           </div>
-
-          <div className="meta-key-value-list">
+          <div className="narv-box-body font-mono">
             {Object.entries(pools).map(([poolName, poolCfg]) => (
-              <div key={poolName} className="meta-kv-item">
-                <div>
-                  <span className="font-bold text-slate-dark">{poolName}</span>
-                  <span className="pool-sub-label"> ({poolCfg.upstreams?.length || 0} instances)</span>
-                </div>
-                <span className="badge-soft-blue font-mono">Strategy: {poolCfg.strategy}</span>
+              <div key={poolName} className="narv-kv-strip">
+                <span className="text-dark font-bold">// {poolName}</span>
+                <span className="text-orange font-bold">[{poolCfg.strategy.toUpperCase()}] ({poolCfg.upstreams?.length || 0} NODES)</span>
               </div>
             ))}
+            <div className="narv-box-footer font-mono">
+              LOAD BALANCING TOPOLOGY
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

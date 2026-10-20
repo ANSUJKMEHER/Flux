@@ -1,9 +1,5 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { 
-  Server, 
-  Flame 
-} from 'lucide-react';
 import { injectChaos } from '../api';
 
 export default function UpstreamCard({ upstream, breaker, onChaosApplied }) {
@@ -32,119 +28,56 @@ export default function UpstreamCard({ upstream, breaker, onChaosApplied }) {
   const breakerState = breaker?.state || 'closed';
   const breakerStats = breaker?.stats || {};
 
-  const getBreakerStyle = (state) => {
-    switch (state?.toLowerCase()) {
-      case 'closed':
-        return {
-          pillClass: 'cb-pill-closed',
-          label: 'CLOSED',
-          desc: 'Normal traffic flowing',
-        };
-      case 'open':
-        return {
-          pillClass: 'cb-pill-open',
-          label: 'OPEN',
-          desc: 'Fast-failing traffic (503)',
-        };
-      case 'half-open':
-      case 'halfopen':
-        return {
-          pillClass: 'cb-pill-halfopen',
-          label: 'HALF-OPEN',
-          desc: 'Canary probe traffic',
-        };
-      default:
-        return {
-          pillClass: 'cb-pill-closed',
-          label: 'CLOSED',
-          desc: 'Normal traffic flowing',
-        };
-    }
-  };
-
-  const cbStyle = getBreakerStyle(breakerState);
+  const isTrip = breakerState.toLowerCase() === 'open';
+  const isHalf = breakerState.toLowerCase().includes('half');
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -3 }}
-      transition={{ duration: 0.25 }}
-      className={`upstream-node-card ${!upstream.healthy ? 'node-card-unhealthy' : ''}`}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.2 }}
+      className={`narv-node-card ${isTrip ? 'node-card-tripped' : isHalf || chaosValue > 0 ? 'node-card-highlight' : ''}`}
     >
-      {/* Node Header */}
-      <div className="node-card-header">
-        <div className="node-title-group">
-          <div className="node-icon-wrapper">
-            <Server size={17} />
-          </div>
-          <div>
-            <h4 className="node-id font-mono">{upstream.id}</h4>
-            <span className="node-pool-chip">{upstream.pool || 'default-pool'}</span>
-          </div>
-        </div>
-
-        <span className={`node-health-badge ${upstream.healthy ? 'health-badge-ok' : 'health-badge-err'}`}>
-          <span className="pulse-circle"></span>
-          {upstream.healthy ? 'ONLINE' : 'OFFLINE'}
+      {/* Index Tag */}
+      <div className="narv-card-top-row font-mono">
+        <span className="text-orange">// {upstream.id.toUpperCase()}</span>
+        <span className={`narv-node-status-dot ${upstream.healthy ? 'status-dot-ok' : 'status-dot-err'}`}>
+          {upstream.healthy ? 'HEALTHY' : 'OFFLINE'}
         </span>
       </div>
 
-      {/* Meta Properties */}
-      <div className="node-meta-grid">
-        <div className="node-meta-item">
-          <span className="meta-label">Target Address</span>
-          <span className="meta-val font-mono">{upstream.url}</span>
-        </div>
+      {/* Title & URL */}
+      <h3 className="narv-node-title font-mono">{upstream.id}</h3>
+      <p className="narv-node-url font-mono text-muted">{upstream.url}</p>
 
-        <div className="node-meta-item">
-          <span className="meta-label">In-Flight Conns</span>
-          <span className="meta-val font-mono">
-            <span className="active-conn-chip">{upstream.active_connections || 0}</span>
+      {/* Circuit Breaker & Sockets Strip */}
+      <div className="narv-node-telemetry font-mono">
+        <div className="telemetry-row">
+          <span className="text-muted">CIRCUIT_BREAKER:</span>
+          <span className={`cb-text-badge ${isTrip ? 'text-rose' : isHalf ? 'text-orange' : 'text-emerald'}`}>
+            [{breakerState.toUpperCase()}]
           </span>
         </div>
 
-        <div className="node-meta-item">
-          <span className="meta-label">Circuit Breaker</span>
-          <span className={`cb-state-pill ${cbStyle.pillClass}`}>
-            <span className="cb-dot"></span>
-            {cbStyle.label}
+        <div className="telemetry-row">
+          <span className="text-muted">ACTIVE_SOCKETS:</span>
+          <span className="text-dark font-bold">{upstream.active_connections || 0} IN-FLIGHT</span>
+        </div>
+
+        <div className="telemetry-row">
+          <span className="text-muted">FAILS / SUCCESS:</span>
+          <span>
+            <span className="text-rose font-bold">{breakerStats.failures || 0}F</span> / <span className="text-emerald font-bold">{breakerStats.successes || 0}S</span>
           </span>
         </div>
       </div>
 
-      {/* Circuit Breaker Detailed Telemetry */}
-      {breaker && (
-        <div className="breaker-telemetry-strip">
-          <div className="b-metric-col">
-            <span className="b-metric-label">Consecutive Fails</span>
-            <span className={`b-metric-val font-mono ${(breakerStats.consecutive_failures || 0) > 0 ? 'text-amber' : ''}`}>
-              {breakerStats.consecutive_failures || 0}
-            </span>
-          </div>
-          <div className="b-metric-col">
-            <span className="b-metric-label">Total Failures</span>
-            <span className={`b-metric-val font-mono ${(breakerStats.failures || 0) > 0 ? 'text-rose' : ''}`}>
-              {breakerStats.failures || 0}
-            </span>
-          </div>
-          <div className="b-metric-col">
-            <span className="b-metric-label">Successes</span>
-            <span className="b-metric-val font-mono text-emerald">
-              {breakerStats.successes || 0}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Chaos Fault Injection Sandbox */}
-      <div className="node-chaos-box">
-        <div className="chaos-label-row">
-          <div className="chaos-title-box">
-            <Flame size={14} className="text-amber" />
-            <span className="chaos-title-text">Chaos Fault Injection</span>
-          </div>
-          <span className="chaos-percentage-badge">{chaosValue}% Error Rate</span>
+      {/* Chaos Injection Sandbox */}
+      <div className="narv-node-chaos">
+        <div className="chaos-label-strip font-mono">
+          <span className="text-dark font-bold">// FAULT_INJECTION:</span>
+          <span className="text-orange font-bold">{chaosValue}%</span>
         </div>
 
         <input
@@ -153,44 +86,50 @@ export default function UpstreamCard({ upstream, breaker, onChaosApplied }) {
           max="100"
           value={chaosValue}
           onChange={(e) => setChaosValue(e.target.value)}
-          className="clean-range-slider"
+          className="narv-slider"
         />
 
-        <div className="chaos-preset-chips">
+        <div className="narv-preset-row font-mono">
           {[
-            { label: '0% Clean', val: 0 },
-            { label: '25% Flaky', val: 25 },
-            { label: '50% Loss', val: 50 },
-            { label: '100% Trip', val: 100 },
+            { label: '0%', val: 0 },
+            { label: '25%', val: 25 },
+            { label: '50%', val: 50 },
+            { label: '100%', val: 100 },
           ].map((p) => (
             <button
               key={p.val}
               type="button"
-              className={`preset-chip-btn ${parseInt(chaosValue, 10) === p.val ? 'preset-chip-active' : ''}`}
+              className={`narv-size-pill font-mono ${parseInt(chaosValue, 10) === p.val ? 'narv-size-pill-active' : ''}`}
               onClick={() => {
                 setChaosValue(p.val);
                 applyChaos(p.val);
               }}
             >
-              {p.label}
+              [{p.label}]
             </button>
           ))}
         </div>
 
         <motion.button
           whileTap={{ scale: 0.98 }}
-          className="btn-apply-fault"
+          className="narv-btn-black font-mono narv-btn-chaos"
           onClick={() => applyChaos(chaosValue)}
           disabled={applying}
         >
-          {applying ? 'Injecting Fault...' : `Apply ${chaosValue}% Fault Rate`}
+          <span className="narv-square-indicator">■</span>
+          <span>{applying ? 'INJECTING FAULT...' : `APPLY ${chaosValue}% ERROR`}</span>
         </motion.button>
 
         {chaosStatus && (
-          <div className={`status-toast toast-${chaosStatus.type}`}>
-            {chaosStatus.msg}
+          <div className={`narv-toast-msg font-mono text-xs ${chaosStatus.type === 'success' ? 'text-emerald' : 'text-orange'}`}>
+            &gt; {chaosStatus.msg}
           </div>
         )}
+      </div>
+
+      {/* Footer */}
+      <div className="narv-card-footer font-mono">
+        {upstream.pool || 'DEFAULT-POOL'} // HTTP/1.1 FAIL-OVER
       </div>
     </motion.div>
   );
