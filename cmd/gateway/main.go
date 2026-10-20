@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -57,21 +58,59 @@ func main() {
 	}
 
 	// --- Redis client with tuned connection pool (CONC-08) ---
-	rdb := redis.NewClient(&redis.Options{
-		Addr:         cfg.Redis.Addr,
-		Password:     cfg.Redis.Password,
-		DB:           cfg.Redis.DB,
-		PoolSize:     cfg.Redis.PoolSize,
-		MinIdleConns: cfg.Redis.MinIdleConns,
-		PoolTimeout:  cfg.Redis.PoolTimeout,
-	})
+	var rdb *redis.Client
+	var redisAddrDisplay string
+
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		opt, err := redis.ParseURL(redisURL)
+		if err != nil {
+			log.Fatalf("invalid REDIS_URL: %v", err)
+		}
+		if cfg.Redis.PoolSize > 0 {
+			opt.PoolSize = cfg.Redis.PoolSize
+		}
+		if cfg.Redis.MinIdleConns > 0 {
+			opt.MinIdleConns = cfg.Redis.MinIdleConns
+		}
+		rdb = redis.NewClient(opt)
+		redisAddrDisplay = opt.Addr
+	} else {
+		redisAddr := cfg.Redis.Addr
+		if envAddr := os.Getenv("REDIS_ADDR"); envAddr != "" {
+			redisAddr = envAddr
+		}
+		redisPass := cfg.Redis.Password
+		if envPass := os.Getenv("REDIS_PASSWORD"); envPass != "" {
+			redisPass = envPass
+		}
+
+		opts := &redis.Options{
+			Addr:         redisAddr,
+			Password:     redisPass,
+			DB:           cfg.Redis.DB,
+			PoolSize:     cfg.Redis.PoolSize,
+			MinIdleConns: cfg.Redis.MinIdleConns,
+			PoolTimeout:  cfg.Redis.PoolTimeout,
+		}
+
+		// Enable TLS automatically for Upstash or if requested
+		if strings.Contains(redisAddr, "upstash.io") || os.Getenv("REDIS_TLS") == "true" {
+			opts.TLSConfig = &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			}
+		}
+
+		rdb = redis.NewClient(opts)
+		redisAddrDisplay = redisAddr
+	}
+
 	ctx := context.Background()
 	redisAvailable := true
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Printf("WARNING: Redis not reachable at %s: %v (rate limiting will fail open)", cfg.Redis.Addr, err)
+		log.Printf("WARNING: Redis not reachable at %s: %v (rate limiting will fail open)", redisAddrDisplay, err)
 		redisAvailable = false
 	} else {
-		log.Printf("Redis connected at %s (pool_size=%d)", cfg.Redis.Addr, cfg.Redis.PoolSize)
+		log.Printf("Redis connected at %s (pool_size=%d)", redisAddrDisplay, cfg.Redis.PoolSize)
 	}
 	_ = redisAvailable
 
@@ -157,8 +196,9 @@ func main() {
 	globalStats := &admin.Stats{}
 
 	// --- Admin API ---
+	var adminSrv *admin.Server
 	if cfg.Admin.Enabled {
-		adminSrv := admin.NewServer(cfgHolder, upstreamsByPool, breakerReg, globalStats)
+		adminSrv = admin.NewServer(cfgHolder, upstreamsByPool, breakerReg, globalStats)
 		go admin.ListenAndServe(cfg.Admin.ListenAddr, adminSrv)
 	}
 
@@ -175,18 +215,32 @@ func main() {
 	// Prometheus metrics endpoint mounted separately
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	if adminSrv != nil {
+		// In single-port environments (like Render), mount admin and dashboard on the main server
+		mux.Handle("/admin/", adminSrv.Handler())
+		mux.Handle("/dashboard/", adminSrv.Handler())
+		mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/dashboard/", http.StatusFound)
+		})
+	}
 	mux.Handle("/", handler)
+
+	// Listen address (support PORT env variable for Render, Fly.io, Railway)
+	listenAddr := cfg.Server.ListenAddr
+	if port := os.Getenv("PORT"); port != "" {
+		listenAddr = ":" + port
+	}
 
 	// --- Start main server ---
 	srv := &http.Server{
-		Addr:         cfg.Server.ListenAddr,
+		Addr:         listenAddr,
 		Handler:      mux,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
 
 	go func() {
-		log.Printf("gateway listening on %s", cfg.Server.ListenAddr)
+		log.Printf("gateway listening on %s", listenAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
 		}
